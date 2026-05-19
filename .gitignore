@@ -1,0 +1,30 @@
+# ── Node ──────────────────────────────
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ── Expo ──────────────────────────────
+.expo/
+dist/
+web-build/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+expo-web*.log
+
+# ── Environment / Secrets ─────────────
+# .env files are intentionally tracked
+# .env
+
+# ── OS ────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── IDE ───────────────────────────────
+.vscode/
+.idea/
