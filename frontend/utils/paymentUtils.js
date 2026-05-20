@@ -1,8 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Asset } from 'expo-asset';
 import * as FileSystem from 'expo-file-system/legacy';
+import { base_url } from '../config';
 
 const LOGO_ASSET = require('../assets/logo.png');
+const BACKEND_URL = (base_url || '').replace(/\/api\/?$/, '');
 
 export const PAYMENT_HISTORY_KEY  = 'paymentHistory';
 export const PAYMENT_COUNTER_KEY  = 'paymentInvoiceCounter';
@@ -151,11 +153,24 @@ export const reserveNextInvoiceNumber = async (storageKey, currentInvoiceNumber)
 
 // ── Logo helper ────────────────────────────────────────────────────────────
 export const getLogoDataUri = async (profile) => {
-  if (profile?.logoBase64) {
-    return profile.logoBase64.startsWith('data:')
-      ? profile.logoBase64
-      : `data:image/png;base64,${profile.logoBase64}`;
+  // 1. Backend URL — always set when logo is uploaded via POST /api/shop-profile/logo
+  if (profile?.logoUrl) {
+    try {
+      const fullUrl = profile.logoUrl.startsWith('http')
+        ? profile.logoUrl
+        : `${BACKEND_URL}${profile.logoUrl}`;
+      const cached = `${FileSystem.cacheDirectory}payment_logo_pdf.png`;
+      const { uri: dl } = await FileSystem.downloadAsync(fullUrl, cached);
+      const b64 = await FileSystem.readAsStringAsync(dl, { encoding: FileSystem.EncodingType.Base64 });
+      if (b64) return `data:image/png;base64,${b64}`;
+    } catch {}
   }
+  // 2. Base64 stored directly in MongoDB
+  if (profile?.logoBase64) {
+    const b = profile.logoBase64;
+    if (b) return b.startsWith('data:') ? b : `data:image/png;base64,${b}`;
+  }
+  // 3. Fallback: local bundled asset
   try {
     const [asset] = await Asset.loadAsync(LOGO_ASSET);
     const b64 = await FileSystem.readAsStringAsync(asset.localUri ?? asset.uri, {
