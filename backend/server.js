@@ -12,6 +12,8 @@ const INVOICES_DIR = path.join(__dirname, 'public', 'invoices');
 if (!fs.existsSync(INVOICES_DIR)) fs.mkdirSync(INVOICES_DIR, { recursive: true });
 const DOCUMENTS_DIR = path.join(__dirname, 'public', 'uploads', 'documents');
 if (!fs.existsSync(DOCUMENTS_DIR)) fs.mkdirSync(DOCUMENTS_DIR, { recursive: true });
+const LOGO_DIR = path.join(__dirname, 'public', 'uploads', 'logo');
+if (!fs.existsSync(LOGO_DIR)) fs.mkdirSync(LOGO_DIR, { recursive: true });
 
 const app = express();
 const ADMIN_EMAIL = 'mayilsilver@gmail.com';
@@ -34,6 +36,7 @@ app.use(cors());
 app.use(express.json({ limit: '25mb' })); // increased for document base64 uploads
 app.use('/invoices', express.static(INVOICES_DIR)); // publicly serve generated invoice PDFs
 app.use('/uploads/documents', express.static(DOCUMENTS_DIR));
+app.use('/uploads/logo', express.static(LOGO_DIR));
 
 // ── API Router (all /api/* routes) ───────────────────────────
 const router = express.Router();
@@ -194,6 +197,7 @@ const ShopProfileSchema = new mongoose.Schema({
   website:            { type: String, default: '' },
   tagline:            { type: String, default: '' },
   logoBase64:         { type: String, default: '' },
+  logoUrl:            { type: String, default: '' },
   bankName:           { type: String, default: '' },
   accountNumber:      { type: String, default: '' },
   ifscCode:           { type: String, default: '' },
@@ -317,6 +321,7 @@ const AppSettingsSchema = new mongoose.Schema({
   appLink:      { type: String, default: '' },
   shareMessage: { type: String, default: 'Download our Billing App and manage your silver business easily.' },
   goldRate:     { type: Number, default: 9850 },
+  ftRate:       { type: Number, default: 75.20 },
 }, { timestamps: true });
 const AppSettings = mongoose.model('AppSettings', AppSettingsSchema);
 
@@ -799,7 +804,7 @@ router.put('/shop-profile', async (req, res) => {
   try {
     const allowed = [
       'shopName', 'gstin', 'phone', 'altPhone', 'address', 'city',
-      'stateName', 'stateCode', 'email', 'website', 'tagline', 'logoBase64',
+      'stateName', 'stateCode', 'email', 'website', 'tagline', 'logoBase64', 'logoUrl',
       'bankName', 'accountNumber', 'ifscCode', 'branch',
       'termsAndConditions', 'footerNotes', 'financialYear'
     ];
@@ -815,6 +820,37 @@ router.put('/shop-profile', async (req, res) => {
     res.json({ success: true, profile });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
+  }
+});
+
+// POST /api/shop-profile/logo — upload logo file, store URL in ShopProfile
+router.post('/shop-profile/logo', async (req, res) => {
+  try {
+    const { base64Data, mimeType } = req.body;
+    if (!base64Data) return res.status(400).json({ success: false, message: 'No image data provided' });
+
+    const ext = (mimeType || '').includes('png') ? '.png' : '.jpg';
+    const safeName = `logo_${Date.now()}${ext}`;
+    const absolutePath = path.join(LOGO_DIR, safeName);
+
+    // Remove old logo files to keep storage clean
+    try {
+      const existing = fs.readdirSync(LOGO_DIR);
+      existing.forEach((f) => { try { fs.unlinkSync(path.join(LOGO_DIR, f)); } catch {} });
+    } catch {}
+
+    fs.writeFileSync(absolutePath, base64Data, 'base64');
+    const logoUrl = `/uploads/logo/${safeName}`;
+
+    await ShopProfile.findOneAndUpdate(
+      { _singleton: 'profile' },
+      { $set: { logoUrl } },
+      { upsert: true }
+    );
+
+    res.json({ success: true, logoUrl });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
@@ -1670,13 +1706,14 @@ router.get('/app-settings', async (req, res) => {
 
 router.put('/app-settings', async (req, res) => {
   try {
-    const { appName, appVersion, appLink, shareMessage, goldRate } = req.body;
+    const { appName, appVersion, appLink, shareMessage, goldRate, ftRate } = req.body;
     const update = {};
     if (appName !== undefined) update.appName = appName;
     if (appVersion !== undefined) update.appVersion = appVersion;
     if (appLink !== undefined) update.appLink = appLink;
     if (shareMessage !== undefined) update.shareMessage = shareMessage;
     if (goldRate !== undefined) update.goldRate = toNumber(goldRate);
+    if (ftRate !== undefined) update.ftRate = toNumber(ftRate);
     const s = await AppSettings.findOneAndUpdate(
       { _singleton: 'appsettings' },
       { $set: update },

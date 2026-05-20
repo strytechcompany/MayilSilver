@@ -18,6 +18,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import Header from '../components/Header';
 import { loadShopProfile, saveShopProfile, DEFAULT_SHOP_PROFILE } from '../services/shopProfile';
+import { uploadShopLogo } from '../services/api';
 import { horizontalPadding, moderateScale, spacing } from '../utils/responsive';
 
 // ── Theme (matches GstBillpreview premium silver) ─────────────
@@ -124,6 +125,13 @@ const KadaiProfilePage = ({ navigation }) => {
       const { base64, mimeType } = result.assets[0];
       const mime = mimeType || 'image/jpeg';
       set('logoBase64', `data:${mime};base64,${base64}`);
+      // Upload to backend to get a hosted URL
+      try {
+        const uploadResult = await uploadShopLogo(base64, mime);
+        if (uploadResult?.success && uploadResult.logoUrl) {
+          set('logoUrl', uploadResult.logoUrl);
+        }
+      } catch {}
     }
   };
 

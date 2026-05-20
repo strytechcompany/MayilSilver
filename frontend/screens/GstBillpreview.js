@@ -15,7 +15,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import { Asset } from 'expo-asset';
 import * as FileSystem from 'expo-file-system/legacy';
 import QRCode from 'qrcode';
 import Header from '../components/Header';
@@ -29,9 +28,6 @@ import { horizontalPadding, moderateScale, spacing } from '../utils/responsive';
 
 const LOGO_ASSET = require('../assets/logo.png');
 const backend_url = base_url.replace(/\/api\/?$/, '');
-
-// Module-level cache so repeated mounts never re-read the file
-let _cachedGstLogoDataUri = '';
 
 // ── Premium Silver Jewellery Theme ────────────────────────────────────────────
 const C = {
@@ -223,38 +219,32 @@ const GstBillpreview = ({ navigation, route }) => {
     setEditableInvoiceNumber(transaction?.invoiceNumber || '');
   }, [transaction?.invoiceNumber]);
 
-  const ensureLogoDataUri = useCallback(async () => {
-    if (logoDataUri) return logoDataUri;
-    if (_cachedGstLogoDataUri) {
-      setLogoDataUri(_cachedGstLogoDataUri);
-      return _cachedGstLogoDataUri;
-    }
-    try {
-      const asset = Asset.fromModule(LOGO_ASSET);
-      await asset.downloadAsync();
+  // Load logo from DB (base64 first, then backend URL, never local asset)
+  useEffect(() => {
+    const loadLogo = async () => {
+      const b64 = shopProfile?.logoBase64;
+      const url = shopProfile?.logoUrl;
 
-      const rawUri = asset.localUri || asset.uri || '';
-      if (!rawUri) return '';
-
-      let fileUri = rawUri;
-      if (!rawUri.startsWith('file://') && !rawUri.startsWith('/')) {
-        const cached = `${FileSystem.cacheDirectory}gst_logo_pdf.png`;
-        const { uri: dl } = await FileSystem.downloadAsync(rawUri, cached);
-        fileUri = dl;
+      if (b64) {
+        setLogoDataUri(b64.startsWith('data:') ? b64 : `data:image/png;base64,${b64}`);
+        return;
       }
-
-      const base64 = await FileSystem.readAsStringAsync(fileUri, { encoding: 'base64' });
-      const dataUri = `data:image/png;base64,${base64}`;
-      _cachedGstLogoDataUri = dataUri;
-      setLogoDataUri(dataUri);
-      return dataUri;
-    } catch (err) {
-      console.warn('[GST Invoice] logo base64 error:', err?.message);
-      return '';
-    }
-  }, [logoDataUri]);
-
-  useEffect(() => { ensureLogoDataUri(); }, [ensureLogoDataUri]);
+      if (url) {
+        try {
+          const fullUrl = url.startsWith('http') ? url : `${backend_url}${url}`;
+          const cacheFile = `${FileSystem.cacheDirectory}gst_logo_pdf.png`;
+          const { uri: dl } = await FileSystem.downloadAsync(fullUrl, cacheFile);
+          const base64 = await FileSystem.readAsStringAsync(dl, { encoding: 'base64' });
+          setLogoDataUri(`data:image/png;base64,${base64}`);
+        } catch {
+          setLogoDataUri('');
+        }
+        return;
+      }
+      setLogoDataUri('');
+    };
+    loadLogo();
+  }, [shopProfile]);
 
   const loadTransaction = useCallback(async () => {
     if (!transactionId) return;
@@ -338,12 +328,7 @@ const GstBillpreview = ({ navigation, route }) => {
         setQrSvg(workingQrSvg);
       }
 
-      const resolvedLogo = await ensureLogoDataUri();
-      const rawLogo = profile.logoBase64 || resolvedLogo;
-      const logoForHtml = rawLogo && !rawLogo.startsWith('data:') && !rawLogo.startsWith('http')
-        ? `data:image/png;base64,${rawLogo}`
-        : rawLogo;
-      const html = buildInvoiceHtml(workingTransaction, invoiceSummary, gstSettings, logoForHtml, profile, workingQrSvg);
+      const html = buildInvoiceHtml(workingTransaction, invoiceSummary, gstSettings, logoDataUri, profile, workingQrSvg);
       if (type === 'print') {
         await Print.printAsync({ html });
       } else {
@@ -469,7 +454,7 @@ const GstBillpreview = ({ navigation, route }) => {
             </View>
             <View style={styles.bannerLogoRow}>
               <Image
-                source={profile.logoBase64 ? { uri: profile.logoBase64 } : LOGO_ASSET}
+                source={logoDataUri ? { uri: logoDataUri } : LOGO_ASSET}
                 style={styles.bannerLogo}
                 resizeMode="contain"
               />

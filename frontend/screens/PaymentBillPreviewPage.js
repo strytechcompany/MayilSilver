@@ -12,7 +12,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { WebView } from 'react-native-webview';
 import * as Print from 'expo-print';
-import { Asset } from 'expo-asset';
 import * as FileSystem from 'expo-file-system/legacy';
 import Header from '../components/Header';
 import { loadGstSettings } from '../services/gstSettings';
@@ -24,30 +23,25 @@ import {
 import { horizontalPadding, moderateScale, spacing } from '../utils/responsive';
 import { AppContext } from '../context/AppContext';
 
-const LOGO_ASSET = require('../assets/logo.png');
-let _cachedPaymentLogoDataUri = '';
+const BACKEND_URL = (require('../config').base_url || '').replace(/\/api\/?$/, '');
 
 const loadLogoSrc = async (profile) => {
   if (profile?.logoBase64) {
     const b = profile.logoBase64;
     return b.startsWith('data:') ? b : `data:image/png;base64,${b}`;
   }
-  if (_cachedPaymentLogoDataUri) return _cachedPaymentLogoDataUri;
-  try {
-    const asset = Asset.fromModule(LOGO_ASSET);
-    await asset.downloadAsync();
-    const rawUri = asset.localUri || asset.uri || '';
-    if (!rawUri) return '';
-    let fileUri = rawUri;
-    if (!rawUri.startsWith('file://') && !rawUri.startsWith('/')) {
+  if (profile?.logoUrl) {
+    try {
+      const fullUrl = profile.logoUrl.startsWith('http')
+        ? profile.logoUrl
+        : `${BACKEND_URL}${profile.logoUrl}`;
       const cached = `${FileSystem.cacheDirectory}payment_logo_pdf.png`;
-      const { uri: dl } = await FileSystem.downloadAsync(rawUri, cached);
-      fileUri = dl;
-    }
-    const base64 = await FileSystem.readAsStringAsync(fileUri, { encoding: 'base64' });
-    _cachedPaymentLogoDataUri = `data:image/png;base64,${base64}`;
-    return _cachedPaymentLogoDataUri;
-  } catch { return ''; }
+      const { uri: dl } = await FileSystem.downloadAsync(fullUrl, cached);
+      const base64 = await FileSystem.readAsStringAsync(dl, { encoding: 'base64' });
+      return `data:image/png;base64,${base64}`;
+    } catch { return ''; }
+  }
+  return '';
 };
 
 const toNumber = (value) => {
