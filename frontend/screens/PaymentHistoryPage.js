@@ -8,6 +8,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Print from 'expo-print';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
+import { Asset } from 'expo-asset';
 import { WebView } from 'react-native-webview';
 import Header from '../components/Header';
 import { fetchPaymentHistoryFromDb, deletePaymentRecord } from '../services/api';
@@ -17,14 +18,23 @@ import { buildPaymentBillHtml, buildSummary } from '../utils/paymentUtils';
 import { base_url } from '../config';
 import { horizontalPadding, moderateScale, spacing } from '../utils/responsive';
 
-// ── Logo helper (DB-first, no local asset fallback) ───────────
+// ── Logo helper ───────────────────────────────────────────────
 const BACKEND_URL = base_url.replace(/\/api\/?$/, '');
+const LOGO_ASSET = require('../assets/logo.png');
+
+let _localLogoB64 = '';
+const loadLogoFallback = async () => {
+  if (_localLogoB64) return _localLogoB64;
+  try {
+    const [asset] = await Asset.loadAsync(LOGO_ASSET);
+    const b64 = await FileSystem.readAsStringAsync(asset.localUri ?? asset.uri, { encoding: 'base64' });
+    _localLogoB64 = `data:image/png;base64,${b64}`;
+  } catch {}
+  return _localLogoB64;
+};
 
 const loadLogoSrc = async (profile) => {
-  if (profile?.logoBase64) {
-    const b = profile.logoBase64;
-    return b.startsWith('data:') ? b : `data:image/png;base64,${b}`;
-  }
+  // logoUrl is always set when logo is uploaded via POST /api/shop-profile/logo
   if (profile?.logoUrl) {
     try {
       const fullUrl = profile.logoUrl.startsWith('http')
@@ -33,10 +43,14 @@ const loadLogoSrc = async (profile) => {
       const cacheFile = `${FileSystem.cacheDirectory}history_logo_pdf.png`;
       const { uri: dl } = await FileSystem.downloadAsync(fullUrl, cacheFile);
       const base64 = await FileSystem.readAsStringAsync(dl, { encoding: 'base64' });
-      return `data:image/png;base64,${base64}`;
-    } catch { return ''; }
+      if (base64) return `data:image/png;base64,${base64}`;
+    } catch {}
   }
-  return '';
+  if (profile?.logoBase64) {
+    const b = profile.logoBase64;
+    if (b) return b.startsWith('data:') ? b : `data:image/png;base64,${b}`;
+  }
+  return loadLogoFallback();
 };
 
 // ── Combined HTML builder ─────────────────────────────────────
