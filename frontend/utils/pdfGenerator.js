@@ -1,4 +1,5 @@
 import * as Print from 'expo-print';
+import { getDueBalanceDisplay } from './balanceDisplay';
 
 const escapeHtml = (value) =>
   String(value ?? '')
@@ -18,8 +19,9 @@ const formatTime = (dateStr) => {
   return new Date(dateStr).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
 };
 
-const formatWeight = (v) => (Number(v) || 0).toFixed(3) + ' g';
-const formatCash = (v) => (Number(v) || 0).toFixed(2);
+const formatOne = (v) => (Number(v) || 0).toFixed(1);
+const formatWeight = (v) => `${formatOne(v)} g`;
+const formatCash = (v) => formatOne(v);
 
 export const generatePDF = async (data, type) => {
   let html = '';
@@ -31,18 +33,18 @@ export const generatePDF = async (data, type) => {
     const cashEntries = billData.cashEntries || [];
     const prevBal = Number(billData.previousBalance) || 0;
     const finalBal = Number(billData.finalBalance) || 0;
-    const finalBalLabel = finalBal >= 0 ? 'Old Balance (OB)' : 'Advance Balance (AB)';
-    const prevBalLabel = prevBal >= 0 ? 'Old Balance' : 'Advance Balance';
+    const finalBalDisplay = getDueBalanceDisplay(finalBal);
+    const prevBalDisplay = getDueBalanceDisplay(prevBal);
     const createdBy = billData.createdBy || billData.userName || 'Admin';
 
     const issueRows = issueItems.map((item, i) => `
       <tr>
         <td class="center">${i + 1}</td>
         <td>${escapeHtml(item.itemName)}</td>
-        <td class="right">${(Number(item.grossWeight) || 0).toFixed(3)}</td>
-        <td class="right">${(Number(item.netWeight) || 0).toFixed(3)}</td>
-        <td class="center">${(Number(item.touch) || 0).toFixed(2)}%</td>
-        <td class="right">${(Number(item.purity) || 0).toFixed(3)}</td>
+        <td class="right">${formatOne(item.grossWeight)}</td>
+        <td class="right">${formatOne(item.netWeight)}</td>
+        <td class="center">${formatOne(item.touch)}%</td>
+        <td class="right">${formatOne(item.purity)}</td>
       </tr>
     `).join('');
 
@@ -50,10 +52,10 @@ export const generatePDF = async (data, type) => {
       <tr>
         <td class="center">${i + 1}</td>
         <td>${escapeHtml(item.itemName)}</td>
-        <td class="right">${(Number(item.weight) || 0).toFixed(3)}</td>
-        <td class="right">${(Number(item.result) || 0).toFixed(3)}</td>
-        <td class="center">${(Number(item.touch) || 0).toFixed(2)}%</td>
-        <td class="right">${(Number(item.purity) || 0).toFixed(3)}</td>
+        <td class="right">${formatOne(item.weight)}</td>
+        <td class="right">${formatOne(item.result)}</td>
+        <td class="center">${formatOne(item.touch)}%</td>
+        <td class="right">${formatOne(item.purity)}</td>
       </tr>
     `).join('');
 
@@ -62,9 +64,9 @@ export const generatePDF = async (data, type) => {
         <td class="center">${i + 1}</td>
         <td>Cash Entry</td>
         <td class="right">&#8377;${formatCash(cash.cashAmount || cash.amount)}</td>
-        <td class="right">${(Number(cash.ftRate) || 0).toFixed(2)}</td>
+        <td class="right">${formatOne(cash.ftRate)}</td>
         <td class="center">-</td>
-        <td class="right">${(Number(cash.pure) || 0).toFixed(3)}</td>
+        <td class="right">${formatOne(cash.pure)}</td>
       </tr>
     `).join('');
 
@@ -76,7 +78,7 @@ export const generatePDF = async (data, type) => {
   @page { size: A4 portrait; margin: 8mm; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: Arial, Helvetica, sans-serif; font-size: 13px; color: #1A2A38; background: #fff; }
-  .invoice { border: 1.5px solid #97A8B5; }
+	  .invoice { border: 1px solid #97A8B5; }
   .top-strip { display:grid; grid-template-columns:1fr 1fr 1fr; align-items:center; padding:8px 14px; background:#FFFFFF; border-bottom:1px solid #C8D4DC; }
   .top-title { font-size:17px; font-weight:900; letter-spacing:1.2px; color:#1C2B3A; text-align:center; }
   .top-orig  { font-size:11.5px; font-weight:800; color:#445C6E; text-align:right; }
@@ -92,14 +94,15 @@ export const generatePDF = async (data, type) => {
   .d-lbl { min-width:108px; font-weight:800; color:#3F5565; }
   .d-colon { width:12px; text-align:center; color:#5F7382; }
   .d-val { flex:1; color:#1C2B3A; font-weight:600; }
-  .dash { border-top:1.5px dashed #445C6E; margin:8px 14px; }
-  .sec-title { background:#FFFFFF; padding:6px 14px; font-size:12px; font-weight:900; color:#1C2B3A; text-transform:uppercase; border-bottom:1.5px solid #445C6E; letter-spacing:.5px; }
-  table.items { width:100%; border-collapse:collapse; font-size:12px; }
-  table.items th, table.items td { border-bottom:1px solid #DCE4EA; padding:7px 8px; vertical-align:middle; }
-  table.items th { background:#FFFFFF; font-weight:900; text-transform:uppercase; color:#445C6E; border-bottom:1.5px solid #445C6E; }
-  table.items tr:nth-child(even) td { background:#F5F7F9; }
-  table.items tr.total td { background:#EEF2F5; border-top:1.5px solid #445C6E; font-weight:900; }
-  .center { text-align:center; } .right { text-align:right; }
+	  .dash { border-top:1px dashed #97A8B5; margin:9px 14px; }
+	  .sec-title { background:#EEF2F5; margin:0 14px; padding:6px 10px; font-size:12px; font-weight:900; color:#1C2B3A; text-transform:uppercase; text-align:center; border:1px solid #97A8B5; letter-spacing:.5px; }
+	  table.items { width:100%; border-collapse:collapse; font-size:12px; }
+	  table.items th, table.items td { border-bottom:1px solid #DCE4EA; padding:7px 8px; vertical-align:middle; }
+	  table.items th { background:#1C2B3A; font-weight:900; text-transform:uppercase; color:#FFFFFF; border-bottom:1px solid #97A8B5; }
+	  table.items tr:nth-child(even) td { background:#F5F7F9; }
+	  table.items tr.total td { background:#EEF2F5; border-top:1px solid #97A8B5; font-weight:900; }
+	  .table-box { margin:0 14px 8px; border-left:1px solid #97A8B5; border-right:1px solid #97A8B5; border-bottom:1px solid #97A8B5; }
+	  .center { text-align:center; } .right { text-align:right; }
   .summary-table { width:calc(100% - 28px); margin:0 14px 6px; border-collapse:collapse; border:1px solid #97A8B5; }
   .summary-table th, .summary-table td { padding:10px 5px; text-align:center; border:1px solid #C8D4DC; }
   .summary-table th { background:#FFFFFF; font-size:10.5px; color:#1C2B3A; font-weight:900; }
@@ -140,65 +143,71 @@ export const generatePDF = async (data, type) => {
       <div class="d-row"><span class="d-lbl">Date</span><span class="d-colon">:</span><span class="d-val">${formatDate(billData.createdAt)}</span></div>
       <div class="d-row"><span class="d-lbl">Time</span><span class="d-colon">:</span><span class="d-val">${formatTime(billData.createdAt)}</span></div>
       <div class="d-row"><span class="d-lbl">By</span><span class="d-colon">:</span><span class="d-val">${escapeHtml(createdBy)}</span></div>
-      <div class="d-row"><span class="d-lbl">${prevBalLabel}</span><span class="d-colon">:</span><span class="d-val">${Math.abs(prevBal).toFixed(3)} g</span></div>
+	      <div class="d-row"><span class="d-lbl" style="color:${prevBalDisplay.color}">${prevBalDisplay.label}</span><span class="d-colon">:</span><span class="d-val" style="color:${prevBalDisplay.color}; font-weight:900;">${prevBalDisplay.value}</span></div>
     </div>
   </div>
   <div class="dash"></div>
 
-  ${receiptItems.length > 0 ? `
-  <div class="sec-title">Receipt</div>
-  <table class="items">
-    <thead>
-      <tr><th>S.No</th><th>Name</th><th class="right">Weight</th><th class="right">Result</th><th class="center">Calc</th><th class="right">Pure</th></tr>
-    </thead>
-    <tbody>${receiptRows}
-      <tr class="total"><td></td><td>TOTAL</td><td class="right">${receiptItems.reduce((s, i) => s + (Number(i.weight) || 0), 0).toFixed(3)}</td><td class="right">${receiptItems.reduce((s, i) => s + (Number(i.result) || 0), 0).toFixed(3)}</td><td></td><td class="right">${(Number(billData.receiptTotalPurity) || 0).toFixed(3)}</td></tr>
-    </tbody>
-  </table>` : ''}
+	  ${issueItems.length > 0 ? `
+	  <div class="sec-title">Issue</div>
+	  <div class="table-box">
+	    <table class="items">
+	      <thead>
+	        <tr><th>S.No</th><th>Name</th><th class="right">G.Weight</th><th class="right">N.Weight</th><th class="center">Calc</th><th class="right">Pure</th></tr>
+	      </thead>
+	      <tbody>${issueRows}
+	        <tr class="total"><td></td><td>TOTAL</td><td class="right">${formatOne(issueItems.reduce((s, i) => s + (Number(i.grossWeight) || 0), 0))}</td><td class="right">${formatOne(issueItems.reduce((s, i) => s + (Number(i.netWeight) || 0), 0))}</td><td></td><td class="right">${formatOne(billData.issueTotalPurity)}</td></tr>
+	      </tbody>
+	    </table>
+	  </div>` : ''}
 
-  ${issueItems.length > 0 ? `
-  <div class="sec-title">Issue</div>
-  <table class="items">
-    <thead>
-      <tr><th>S.No</th><th>Name</th><th class="right">G.Weight</th><th class="right">N.Weight</th><th class="center">Calc</th><th class="right">Pure</th></tr>
-    </thead>
-    <tbody>${issueRows}
-      <tr class="total"><td></td><td>TOTAL</td><td class="right">${issueItems.reduce((s, i) => s + (Number(i.grossWeight) || 0), 0).toFixed(3)}</td><td class="right">${issueItems.reduce((s, i) => s + (Number(i.netWeight) || 0), 0).toFixed(3)}</td><td></td><td class="right">${(Number(billData.issueTotalPurity) || 0).toFixed(3)}</td></tr>
-    </tbody>
-  </table>` : ''}
+	  ${receiptItems.length > 0 ? `
+	  <div class="sec-title">Received</div>
+	  <div class="table-box">
+	    <table class="items">
+	      <thead>
+	        <tr><th>S.No</th><th>Name</th><th class="right">Weight</th><th class="right">Result</th><th class="center">Calc</th><th class="right">Pure</th></tr>
+	      </thead>
+	      <tbody>${receiptRows}
+	        <tr class="total"><td></td><td>TOTAL</td><td class="right">${formatOne(receiptItems.reduce((s, i) => s + (Number(i.weight) || 0), 0))}</td><td class="right">${formatOne(receiptItems.reduce((s, i) => s + (Number(i.result) || 0), 0))}</td><td></td><td class="right">${formatOne(billData.receiptTotalPurity)}</td></tr>
+	      </tbody>
+	    </table>
+	  </div>` : ''}
 
-  ${cashEntries.length > 0 ? `
-  <div class="sec-title">Cash</div>
-  <table class="items">
-    <thead>
-      <tr><th>S.No</th><th>Description</th><th class="right">Amount</th><th class="right">FT Rate</th><th class="center">-</th><th class="right">Pure</th></tr>
-    </thead>
-    <tbody>${cashRows}</tbody>
-  </table>` : ''}
+	  ${cashEntries.length > 0 ? `
+	  <div class="sec-title">Cash</div>
+	  <div class="table-box">
+	    <table class="items">
+	      <thead>
+	        <tr><th>S.No</th><th>Description</th><th class="right">Amount</th><th class="right">FT Rate</th><th class="center">-</th><th class="right">Pure</th></tr>
+	      </thead>
+	      <tbody>${cashRows}</tbody>
+	    </table>
+	  </div>` : ''}
   <div class="dash"></div>
 
   <div class="sec-title">Summary</div>
   <table class="summary-table">
     <thead>
-      <tr><th>Advance Balance</th><th>Receipt</th><th>Issue</th><th>Cash</th><th>Old Balance</th></tr>
+      <tr><th style="color:${prevBalDisplay.color}">${prevBalDisplay.label}</th><th>Receipt</th><th>Issue</th><th>Cash</th><th style="color:${finalBalDisplay.color}">${finalBalDisplay.label}</th></tr>
     </thead>
     <tbody>
       <tr>
-        <td>${Math.abs(prevBal).toFixed(3)} g</td>
-        <td>${(Number(billData.receiptTotalPurity) || 0).toFixed(3)} g</td>
-        <td>${(Number(billData.issueTotalPurity) || 0).toFixed(3)} g</td>
-        <td>${(Number(billData.cashTotalPurity) || 0).toFixed(3)} g</td>
-        <td style="color: ${finalBal >= 0 ? '#EF4444' : '#10B981'}">${Math.abs(finalBal).toFixed(3)} g</td>
+	        <td style="color: ${prevBalDisplay.color}">${prevBalDisplay.value}</td>
+	        <td>${formatWeight(billData.receiptTotalPurity)}</td>
+	        <td>${formatWeight(billData.issueTotalPurity)}</td>
+	        <td>${formatWeight(billData.cashTotalPurity)}</td>
+	        <td style="color: ${finalBalDisplay.color}">${finalBalDisplay.value}</td>
       </tr>
     </tbody>
   </table>
   <div class="formula">
-    ${Math.abs(prevBal).toFixed(3)} + ${(Number(billData.issueTotalPurity) || 0).toFixed(3)} - (${(Number(billData.receiptTotalPurity) || 0).toFixed(3)} + ${(Number(billData.cashTotalPurity) || 0).toFixed(3)}) = ${Math.abs(finalBal).toFixed(3)}
+	    ${formatOne(Math.abs(prevBal))} + ${formatOne(billData.issueTotalPurity)} - (${formatOne(billData.receiptTotalPurity)} + ${formatOne(billData.cashTotalPurity)}) = ${formatOne(Math.abs(finalBal))}
   </div>
 
   <div class="grand-total">
-    <span class="gt-label">${finalBalLabel}</span>
-    <span class="gt-value">${Math.abs(finalBal).toFixed(3)} g</span>
+	    <span class="gt-label" style="color:${finalBalDisplay.color}">${finalBalDisplay.label}</span>
+	    <span class="gt-value" style="color:${finalBalDisplay.color}">${finalBalDisplay.value}</span>
   </div>
 
   <div class="footer-sig">
@@ -207,9 +216,9 @@ export const generatePDF = async (data, type) => {
   </div>
 
   <div class="bottom-bar">
-    <div class="bb-cell"><span class="bb-lbl">Total Pure (Issue)</span><span class="bb-val">: ${(Number(billData.issueTotalPurity) || 0).toFixed(3)} g</span></div>
-    <div class="bb-cell" style="justify-content:center; border-left:1px solid #3D5265; border-right:1px solid #3D5265;"><span class="bb-lbl">Total Pure (Recp)</span><span class="bb-val">: ${(Number(billData.receiptTotalPurity) || 0).toFixed(3)} g</span></div>
-    <div class="bb-cell" style="justify-content:flex-end;"><span class="bb-lbl">Balance</span><span class="bb-val">: ${Math.abs(finalBal).toFixed(3)} g</span></div>
+	    <div class="bb-cell"><span class="bb-lbl">Total Pure (Issue)</span><span class="bb-val">: ${formatWeight(billData.issueTotalPurity)}</span></div>
+	    <div class="bb-cell" style="justify-content:center; border-left:1px solid #3D5265; border-right:1px solid #3D5265;"><span class="bb-lbl">Total Pure (Recp)</span><span class="bb-val">: ${formatWeight(billData.receiptTotalPurity)}</span></div>
+	    <div class="bb-cell" style="justify-content:flex-end;"><span class="bb-lbl" style="color:${finalBalDisplay.color}">${finalBalDisplay.label}</span><span class="bb-val" style="color:${finalBalDisplay.color}">: ${finalBalDisplay.value}</span></div>
   </div>
 </div>
 </body>
@@ -218,16 +227,29 @@ export const generatePDF = async (data, type) => {
     const { rows, summary, customerName, customerPhone, dateRange } = data;
     const generatedOn = new Date().toLocaleString();
     
-    const statementRows = rows.map((row, index) => `
-      <tr class="${index % 2 === 0 ? 'even' : 'odd'}">
-        <td class="center">${formatDate(row.date)}</td>
-        <td class="center">${escapeHtml(row.type)}</td>
-        <td>${escapeHtml(row.description)}</td>
-        <td class="right" style="color:#EF4444">${row.debit > 0 ? row.debit.toFixed(3) : '-'}</td>
-        <td class="right" style="color:#10B981">${row.credit > 0 ? row.credit.toFixed(3) : '-'}</td>
-        <td class="right" style="color:#2563EB; font-weight:700">${row.balanceLabel} ${row.balance.toFixed(3)}</td>
-      </tr>
-    `).join('');
+    const legacyAdvanceToken = String.fromCharCode(65, 66);
+    const getStatementBalanceDisplay = (row) =>
+      row.balanceDisplay || (row.balanceLabel === legacyAdvanceToken
+        ? getDueBalanceDisplay(-Math.abs(Number(row.balance) || 0))
+        : getDueBalanceDisplay(Math.abs(Number(row.balance) || 0)));
+    const summaryBalanceDisplay = summary.balanceDisplay || (summary.balanceLabel === legacyAdvanceToken
+      ? getDueBalanceDisplay(-Math.abs(Number(summary.balance) || 0))
+      : getDueBalanceDisplay(Math.abs(Number(summary.balance) || 0)));
+
+    const statementRows = rows.map((row, index) => {
+      const balanceDisplay = getStatementBalanceDisplay(row);
+
+      return `
+	      <tr class="${index % 2 === 0 ? 'even' : 'odd'}">
+	        <td class="center">${formatDate(row.date)}</td>
+	        <td class="center">${escapeHtml(row.type)}</td>
+	        <td>${escapeHtml(row.description)}</td>
+	        <td class="right" style="color:#EF4444">${row.debit > 0 ? row.debit.toFixed(3) : '-'}</td>
+	        <td class="right" style="color:#10B981">${row.credit > 0 ? row.credit.toFixed(3) : '-'}</td>
+	        <td class="right" style="color:${balanceDisplay.color}; font-weight:700">${balanceDisplay.text}</td>
+	      </tr>
+	    `;
+    }).join('');
 
     html = `<!DOCTYPE html>
 <html>
@@ -269,7 +291,7 @@ export const generatePDF = async (data, type) => {
   <div class="summary-boxes">
     <div class="box"><div class="box-lbl">Total Debit</div><div class="box-val" style="color:#EF4444">${summary.debit.toFixed(3)} g</div></div>
     <div class="box"><div class="box-lbl">Total Credit</div><div class="box-val" style="color:#10B981">${summary.credit.toFixed(3)} g</div></div>
-    <div class="box"><div class="box-lbl">Closing Balance</div><div class="box-val" style="color:#2563EB">${summary.balanceLabel} ${summary.balance.toFixed(3)} g</div></div>
+	    <div class="box"><div class="box-lbl">Closing Balance</div><div class="box-val" style="color:${summaryBalanceDisplay.color}">${summaryBalanceDisplay.text}</div></div>
   </div>
   <table>
     <thead>

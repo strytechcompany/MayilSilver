@@ -395,7 +395,7 @@ export const searchCustomers = async (search = '') => {
  *   issueItems: [{ itemName, grossWeight, netWeight, touch, purity, amount }],
  *   receiptItems: [{ itemName, weight, result, touch, purity }],
  *   cashEntries: [{ cashAmount, cashType, notes }],
- *   previousBalance,   // signed number: +OB, -AB
+ *   previousBalance,   // signed due/advance balance
  *   transactionType    // 'B2B'
  * }
  */
@@ -498,6 +498,16 @@ export const deletePaymentRecord = async (id) => {
 // ── BILL HISTORY ─────────────────────────────────────────────
 
 // Fetch all bills for a specific customer
+export const fetchAllBills = async () => {
+  try {
+    const data = await getJSON(`${base_url}/bills`);
+    return data.bills || [];
+  } catch (error) {
+    console.error('fetchAllBills Error:', error);
+    throw error;
+  }
+};
+
 export const fetchBillHistory = async (customerId) => {
   try {
     const data = await getJSON(`${base_url}/bills/history/${customerId}`);
@@ -505,6 +515,16 @@ export const fetchBillHistory = async (customerId) => {
   } catch (error) {
     console.error('fetchBillHistory Error:', error);
     return [];
+  }
+};
+
+export const deleteBillFromDb = async (billNo) => {
+  try {
+    const res = await apiFetch(`${base_url}/bills/${billNo}`, { method: 'DELETE' });
+    return handleResponse(res);
+  } catch (error) {
+    console.error('deleteBillFromDb Error:', error);
+    return { success: false, message: 'Network error' };
   }
 };
 

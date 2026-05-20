@@ -617,7 +617,7 @@ const PaymentPage = ({ navigation }) => {
                   <MaterialCommunityIcons name="cash-multiple" size={18} color={selectedRateType === 'gold' ? '#FFFFFF' : '#B45309'} />
                 </View>
                 <View style={styles.rateSelectTextWrap}>
-                  <Text style={[styles.rateSelectLabel, selectedRateType === 'gold' && styles.rateSelectLabelActive]}>Gold Rate</Text>
+                  <Text style={[styles.rateSelectLabel, selectedRateType === 'gold' && styles.rateSelectLabelActive]}>Silver Rate</Text>
                   <Text style={[styles.rateSelectValue, selectedRateType === 'gold' && styles.rateSelectValueActive]}>Rs {goldRate}</Text>
                 </View>
               </TouchableOpacity>

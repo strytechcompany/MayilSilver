@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useContext, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -12,15 +12,48 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { WebView } from 'react-native-webview';
 import * as Print from 'expo-print';
+import { Asset } from 'expo-asset';
+import * as FileSystem from 'expo-file-system/legacy';
 import Header from '../components/Header';
 import { loadGstSettings } from '../services/gstSettings';
 import { loadShopProfile } from '../services/shopProfile';
 import {
   buildPaymentBillHtml,
   buildSummary,
-  getLogoDataUri,
 } from '../utils/paymentUtils';
 import { horizontalPadding, moderateScale, spacing } from '../utils/responsive';
+import { AppContext } from '../context/AppContext';
+
+const LOGO_ASSET = require('../assets/logo.png');
+let _cachedPaymentLogoDataUri = '';
+
+const loadLogoSrc = async (profile) => {
+  if (profile?.logoBase64) {
+    const b = profile.logoBase64;
+    return b.startsWith('data:') ? b : `data:image/png;base64,${b}`;
+  }
+  if (_cachedPaymentLogoDataUri) return _cachedPaymentLogoDataUri;
+  try {
+    const asset = Asset.fromModule(LOGO_ASSET);
+    await asset.downloadAsync();
+    const rawUri = asset.localUri || asset.uri || '';
+    if (!rawUri) return '';
+    let fileUri = rawUri;
+    if (!rawUri.startsWith('file://') && !rawUri.startsWith('/')) {
+      const cached = `${FileSystem.cacheDirectory}payment_logo_pdf.png`;
+      const { uri: dl } = await FileSystem.downloadAsync(rawUri, cached);
+      fileUri = dl;
+    }
+    const base64 = await FileSystem.readAsStringAsync(fileUri, { encoding: 'base64' });
+    _cachedPaymentLogoDataUri = `data:image/png;base64,${base64}`;
+    return _cachedPaymentLogoDataUri;
+  } catch { return ''; }
+};
+
+const toNumber = (value) => {
+  const parsed = parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
 
 const fmtCurrency = (value) =>
   Number(value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -38,11 +71,14 @@ const fmtDateTime = (value) => {
 
 const PaymentBillPreviewPage = ({ navigation, route }) => {
   const paymentData = route.params?.paymentData || null;
+  const { goldRate } = useContext(AppContext);
   const [html, setHtml] = useState('');
   const [loading, setLoading] = useState(true);
   const [printing, setPrinting] = useState(false);
 
   const resolvedDate = paymentData?.invoiceDate || paymentData?.updatedAt || paymentData?.createdAt;
+
+  const directAmount = useMemo(() => toNumber(paymentData?.cash), [paymentData]);
 
   const infoRows = useMemo(() => ([
     { label: 'Customer', value: paymentData?.customerName || '-' },
@@ -50,12 +86,11 @@ const PaymentBillPreviewPage = ({ navigation, route }) => {
     { label: 'GST No', value: paymentData?.gstNo || '-' },
     { label: 'Item', value: paymentData?.itemName || '-' },
     { label: 'Weight', value: paymentData?.weight ? `${paymentData.weight} g` : '-' },
-    { label: 'FT Rate', value: paymentData?.ftRate ? `Rs ${fmtCurrency(paymentData.ftRate)}` : '-' },
-    { label: 'Cash', value: paymentData?.cash ? `Rs ${fmtCurrency(paymentData.cash)}` : '-' },
-    { label: 'Total', value: paymentData?.total ? `Rs ${fmtCurrency(paymentData.total)}` : '-' },
+    { label: 'Silver Rate', value: paymentData?.ftRate ? `Rs ${fmtCurrency(paymentData.ftRate)}` : (goldRate ? `Rs ${fmtCurrency(goldRate)}` : '-') },
+    { label: 'Amount', value: directAmount > 0 ? `Rs ${fmtCurrency(directAmount)}` : '-' },
     { label: 'Bill No', value: paymentData?.invoiceNumber || '-' },
     { label: 'Date & Time', value: resolvedDate ? fmtDateTime(resolvedDate) : '-' },
-  ]), [paymentData, resolvedDate]);
+  ]), [paymentData, resolvedDate, goldRate, directAmount]);
 
   useEffect(() => {
     const buildPreview = async () => {
@@ -69,6 +104,8 @@ const PaymentBillPreviewPage = ({ navigation, route }) => {
         const [profile, gstSettings] = await Promise.all([loadShopProfile(), loadGstSettings()]);
         const summary = buildSummary(paymentData.cash, paymentData.weight, gstSettings);
         summary.rows[0].particular = paymentData.itemName || '';
+        const silverRate = toNumber(paymentData?.ftRate) || toNumber(goldRate);
+        if (silverRate > 0) summary.rows[0].rateNumeric = silverRate;
 
         const transaction = {
           customerName: paymentData.customerName,
@@ -93,7 +130,7 @@ const PaymentBillPreviewPage = ({ navigation, route }) => {
           termsAndConditions: profile.termsAndConditions || '',
         };
 
-        const logoSrc = await getLogoDataUri(profile);
+        const logoSrc = await loadLogoSrc(profile);
         setHtml(buildPaymentBillHtml(transaction, summary, gstSettings, logoSrc, shopProfileForHtml));
       } catch (error) {
         console.error('PaymentBillPreview buildPreview:', error);
@@ -104,7 +141,7 @@ const PaymentBillPreviewPage = ({ navigation, route }) => {
     };
 
     buildPreview();
-  }, [paymentData, resolvedDate]);
+  }, [paymentData, resolvedDate, goldRate]);
 
   const handlePrint = async () => {
     if (!html) return;

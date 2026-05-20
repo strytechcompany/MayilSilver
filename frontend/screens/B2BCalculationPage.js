@@ -13,11 +13,38 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { fetchAllCustomers, saveTransaction } from '../services/api';
+import { fetchAllCustomers, fetchRecentTransactions, saveTransaction } from '../services/api';
 import Header from '../components/Header';
 import Card from '../components/Card';
 import { AppContext } from '../context/AppContext';
 import { horizontalPadding, moderateScale, spacing } from '../utils/responsive';
+import { getCustomerBalanceDisplay, getDueBalanceDisplay } from '../utils/balanceDisplay';
+
+const buildItemHistory = (transactions = []) => {
+  const seen = new Set();
+  const names = [];
+
+  transactions.forEach((txn) => {
+    [...(txn.issueItems || []), ...(txn.receiptItems || [])].forEach((item) => {
+      const trimmed = String(item?.itemName || '').trim();
+      const key = trimmed.toLowerCase();
+      if (!trimmed || seen.has(key)) return;
+      seen.add(key);
+      names.push(trimmed);
+    });
+  });
+
+  return names;
+};
+
+const filterSuggestions = (items, query) => {
+  const normalized = String(query || '').trim().toLowerCase();
+  if (!normalized) return [];
+
+  return items
+    .filter((name) => name.toLowerCase().includes(normalized))
+    .slice(0, 6);
+};
 
 const B2BCalculationPage = ({ navigation }) => {
   const { ftRate } = useContext(AppContext);
@@ -27,6 +54,7 @@ const B2BCalculationPage = ({ navigation }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [itemHistory, setItemHistory] = useState([]);
 
   // State for Transaction
   const [issueItems, setIssueItems] = useState([]);
@@ -38,6 +66,12 @@ const B2BCalculationPage = ({ navigation }) => {
   const [issueInput, setIssueInput] = useState({ itemName: '', grossWeight: '', touch: '' });
   const [receiptInput, setReceiptInput] = useState({ itemName: '', weight: '', result: '', touch: '' });
   const [cashInput, setCashInput] = useState({ amount: '', ftRate: '', cashType: 'Cash', notes: '' });
+  const [issueAdvInput, setIssueAdvInput] = useState({ itemName: '', weight: '', touch: '' });
+  const [receiptAdvInput, setReceiptAdvInput] = useState({ itemName: '', weight: '', sub: '', touch: '' });
+  const [issueSuggestOpen, setIssueSuggestOpen] = useState(false);
+  const [receiptSuggestOpen, setReceiptSuggestOpen] = useState(false);
+  const [issueAdvSuggestOpen, setIssueAdvSuggestOpen] = useState(false);
+  const [receiptAdvSuggestOpen, setReceiptAdvSuggestOpen] = useState(false);
 
   const updateIssueInput = (field, value) => {
     setIssueInput((prev) => ({
@@ -60,6 +94,9 @@ const B2BCalculationPage = ({ navigation }) => {
     }));
   };
 
+  const updateIssueAdvInput = (field, value) => setIssueAdvInput(prev => ({ ...prev, [field]: value }));
+  const updateReceiptAdvInput = (field, value) => setReceiptAdvInput(prev => ({ ...prev, [field]: value }));
+
   // Sync ftRate from context to cashInput when it changes or on mount
   useEffect(() => {
     setCashInput(prev => ({ ...prev, ftRate: ftRate }));
@@ -73,10 +110,14 @@ const B2BCalculationPage = ({ navigation }) => {
   const fetchCustomers = async () => {
     setLoading(true);
     try {
-      const data = await fetchAllCustomers();
+      const [data, transactions] = await Promise.all([
+        fetchAllCustomers(),
+        fetchRecentTransactions(200),
+      ]);
       const normalized = (data || []).map(c => ({ ...c, name: c.name || c.customerName || '' }));
       setCustomers(normalized);
       setFilteredCustomers(normalized);
+      setItemHistory(buildItemHistory(transactions));
     } catch (error) {
       console.error('Fetch Error:', error);
       Alert.alert('Error', 'Failed to load customers');
@@ -144,6 +185,42 @@ const B2BCalculationPage = ({ navigation }) => {
     setCashInput({ amount: '', ftRate: ftRate, cashType: 'Cash', notes: '' });
   };
 
+  const addAdvIssueItem = () => {
+    const weight = parseFloat(issueAdvInput.weight) || 0;
+    const rate = parseFloat(ftRate) || 1;
+    const touch = parseFloat(issueAdvInput.touch) || 0;
+    if (!issueAdvInput.itemName || weight === 0) return;
+    const gross = weight / rate;
+    const purity = (gross * touch) / 100;
+    setIssueItems([...issueItems, {
+      itemName: issueAdvInput.itemName,
+      id: Date.now(),
+      grossWeight: parseFloat(gross.toFixed(3)),
+      touch,
+      purity: parseFloat(purity.toFixed(3)),
+      netWeight: parseFloat(gross.toFixed(3)),
+    }]);
+    setIssueAdvInput({ itemName: '', weight: '', touch: '' });
+  };
+
+  const addAdvReceiptItem = () => {
+    const weight = parseFloat(receiptAdvInput.weight) || 0;
+    const sub = parseFloat(receiptAdvInput.sub) || 0;
+    const touch = parseFloat(receiptAdvInput.touch) || 0;
+    if (!receiptAdvInput.itemName || weight === 0) return;
+    const result = weight - sub;
+    const purity = (result * touch) / 100;
+    setReceiptItems([...receiptItems, {
+      itemName: receiptAdvInput.itemName,
+      id: Date.now(),
+      weight,
+      result: parseFloat(result.toFixed(3)),
+      touch,
+      purity: parseFloat(purity.toFixed(3)),
+    }]);
+    setReceiptAdvInput({ itemName: '', weight: '', sub: '', touch: '' });
+  };
+
   // Calculations
   const totals = useMemo(() => {
     const issueTotal = issueItems.reduce((acc, item) => acc + item.purity, 0);
@@ -160,11 +237,42 @@ const B2BCalculationPage = ({ navigation }) => {
       cashTotal: cashTotal.toFixed(2),
       cashTotalPurity: cashTotalPurity.toFixed(3),
       finalBalance: finalBalance.toFixed(3),
-      balanceLabel: finalBalance >= 0 ? 'Old Balance (OB)' : 'Advance Balance (AB)',
-      balanceValue: Math.abs(finalBalance).toFixed(3),
-      balanceColor: finalBalance >= 0 ? '#EF4444' : '#10B981'
+      balanceDisplay: getDueBalanceDisplay(finalBalance)
     };
   }, [issueItems, receiptItems, cashEntries, selectedCustomer]);
+
+  const issueSuggestions = useMemo(
+    () => filterSuggestions(itemHistory, issueInput.itemName),
+    [itemHistory, issueInput.itemName]
+  );
+  const receiptSuggestions = useMemo(
+    () => filterSuggestions(itemHistory, receiptInput.itemName),
+    [itemHistory, receiptInput.itemName]
+  );
+  const issueAdvSuggestions = useMemo(
+    () => filterSuggestions(itemHistory, issueAdvInput.itemName),
+    [itemHistory, issueAdvInput.itemName]
+  );
+  const receiptAdvSuggestions = useMemo(
+    () => filterSuggestions(itemHistory, receiptAdvInput.itemName),
+    [itemHistory, receiptAdvInput.itemName]
+  );
+  const issueAdvCalc = useMemo(() => {
+    const w = parseFloat(issueAdvInput.weight) || 0;
+    const rate = parseFloat(ftRate) || 1;
+    const t = parseFloat(issueAdvInput.touch) || 0;
+    if (!w) return null;
+    const gross = w / rate;
+    return { gross: gross.toFixed(3), purity: ((gross * t) / 100).toFixed(3) };
+  }, [issueAdvInput, ftRate]);
+  const receiptAdvCalc = useMemo(() => {
+    const w = parseFloat(receiptAdvInput.weight) || 0;
+    const s = parseFloat(receiptAdvInput.sub) || 0;
+    const t = parseFloat(receiptAdvInput.touch) || 0;
+    if (!w) return null;
+    const result = w - s;
+    return { result: result.toFixed(3), purity: ((result * t) / 100).toFixed(3) };
+  }, [receiptAdvInput]);
 
   // Save Transaction
   const handleSaveTransaction = async () => {
@@ -207,9 +315,10 @@ const B2BCalculationPage = ({ navigation }) => {
       });
 
       if (data.success) {
+        const savedBalanceDisplay = getDueBalanceDisplay(data.bill?.finalBalance ?? totals.finalBalance);
         Alert.alert(
           '✅ Transaction Saved',
-          `Bill No: #${data.billNo}\nFinal Balance: ${data.balanceLabel} ${parseFloat(data.balanceValue).toFixed(3)}g`,
+          `Bill No: #${data.billNo}\nFinal Balance: ${savedBalanceDisplay.label} : ${savedBalanceDisplay.value}`,
           [{ text: 'OK', onPress: () => {
               navigation.navigate('BillPreview', { billId: data.bill._id, billData: data.bill, customer: selectedCustomer });
               setSelectedCustomer(null);
@@ -268,28 +377,33 @@ const B2BCalculationPage = ({ navigation }) => {
               {loading ? (
                 <ActivityIndicator size="large" color="#2563EB" style={{ marginTop: 40 }} />
               ) : (
-                filteredCustomers.map((item) => (
-                  <TouchableOpacity 
-                    key={item._id} 
-                    style={styles.customerCard}
-                    onPress={() => setSelectedCustomer(item)}
-                    activeOpacity={0.7}
-                  >
-                    <View style={styles.customerCardInfo}>
-                      <Text style={styles.customerName}>{item.name}</Text>
-                      <Text style={styles.customerPhone}>{item.phone}</Text>
-                    </View>
-                    <View style={styles.customerCardBalance}>
-                      {item.ob > 0 ? (
-                        <Text style={[styles.balanceText, { color: '#EF4444' }]}>OB: {item.ob.toFixed(3)}g</Text>
-                      ) : item.ab > 0 ? (
-                        <Text style={[styles.balanceText, { color: '#10B981' }]}>AB: {item.ab.toFixed(3)}g</Text>
-                      ) : (
-                        <Text style={[styles.balanceText, { color: '#6B7280' }]}>NIL</Text>
-                      )}
-                    </View>
-                  </TouchableOpacity>
-                ))
+                filteredCustomers.map((item) => {
+                  const balanceDisplay = getCustomerBalanceDisplay(item);
+
+                  return (
+                    <TouchableOpacity 
+                      key={item._id} 
+                      style={styles.customerCard}
+                      onPress={() => setSelectedCustomer(item)}
+                      activeOpacity={0.7}
+                    >
+                      <View style={styles.customerCardInfo}>
+                        <Text style={styles.customerName}>{item.name}</Text>
+                        <Text style={styles.customerPhone}>{item.phone}</Text>
+                      </View>
+                      <View
+                        style={[
+                          styles.customerCardBalance,
+                          { backgroundColor: balanceDisplay.bg, borderColor: balanceDisplay.border }
+                        ]}
+                      >
+                        <Text style={[styles.balanceText, { color: balanceDisplay.color }]}>
+                          {balanceDisplay.label} : {balanceDisplay.value}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })
               )}
             </View>
           )}
@@ -314,9 +428,8 @@ const B2BCalculationPage = ({ navigation }) => {
                   <InfoItem label="Address" value={selectedCustomer.address || 'N/A'} />
                   <InfoItem label="GSTIN" value={selectedCustomer.gstin || 'N/A'} />
                   <InfoItem 
-                    label="Current Balance" 
-                    value={selectedCustomer.ob > 0 ? `OB: ${selectedCustomer.ob.toFixed(3)}g` : `AB: ${selectedCustomer.ab.toFixed(3)}g`}
-                    color={selectedCustomer.ob > 0 ? '#EF4444' : '#10B981'}
+                    label="Current Balance"
+                    balanceDisplay={getCustomerBalanceDisplay(selectedCustomer)}
                   />
                 </View>
               </Card>
@@ -325,13 +438,44 @@ const B2BCalculationPage = ({ navigation }) => {
               <Card style={styles.tableCard}>
                 <Text style={styles.tableTitle}>Issue Entry</Text>
                 <View style={styles.inputRow}>
-                  <TextInput style={[styles.input, {flex: 2}]} placeholder="Item" placeholderTextColor="#9CA3AF" value={issueInput.itemName} onChangeText={t => updateIssueInput('itemName', t)} autoCorrect={false} />
-                  <TextInput style={styles.input} placeholder="Gross" placeholderTextColor="#9CA3AF" keyboardType="numeric" value={issueInput.grossWeight} onChangeText={t => updateIssueInput('grossWeight', t)} />
+                  <View style={styles.itemSuggestWrap}>
+                    <TextInput style={styles.input} placeholder="Item" placeholderTextColor="#9CA3AF" value={issueInput.itemName} onChangeText={t => { updateIssueInput('itemName', t); setIssueSuggestOpen(true); }} autoCorrect={false} />
+                    <SuggestionDropdown
+                      suggestions={issueSuggestions}
+                      visible={issueSuggestOpen}
+                      onSelect={(name) => { updateIssueInput('itemName', name); setIssueSuggestOpen(false); }}
+                    />
+                  </View>
+                  <TextInput style={styles.input} placeholder="Weight" placeholderTextColor="#9CA3AF" keyboardType="numeric" value={issueInput.grossWeight} onChangeText={t => updateIssueInput('grossWeight', t)} />
                   <TextInput style={styles.input} placeholder="Touch%" placeholderTextColor="#9CA3AF" keyboardType="numeric" value={issueInput.touch} onChangeText={t => updateIssueInput('touch', t)} />
                   <TouchableOpacity style={styles.addRowBtn} onPress={addIssueItem}>
                     <MaterialCommunityIcons name="plus" size={20} color="#FFFFFF" />
                   </TouchableOpacity>
                 </View>
+                {/* Advanced Row: Weight ÷ FT Rate */}
+                <View style={styles.advRowDivider}>
+                  <View style={styles.advDividerLine} />
+                  <Text style={styles.advDividerLabel}>W ÷ FT Rate</Text>
+                  <View style={styles.advDividerLine} />
+                </View>
+                <View style={[styles.inputRow, { zIndex: 4 }]}>
+                  <View style={[styles.itemSuggestWrap, { zIndex: 8 }]}>
+                    <TextInput style={styles.input} placeholder="Item" placeholderTextColor="#9CA3AF" value={issueAdvInput.itemName} onChangeText={t => { updateIssueAdvInput('itemName', t); setIssueAdvSuggestOpen(true); }} autoCorrect={false} />
+                    <SuggestionDropdown suggestions={issueAdvSuggestions} visible={issueAdvSuggestOpen} onSelect={name => { updateIssueAdvInput('itemName', name); setIssueAdvSuggestOpen(false); }} />
+                  </View>
+                  <TextInput style={styles.input} placeholder="Weight" placeholderTextColor="#9CA3AF" keyboardType="numeric" value={issueAdvInput.weight} onChangeText={t => updateIssueAdvInput('weight', t)} />
+                  <TextInput style={styles.input} placeholder="Touch%" placeholderTextColor="#9CA3AF" keyboardType="numeric" value={issueAdvInput.touch} onChangeText={t => updateIssueAdvInput('touch', t)} />
+                  <TouchableOpacity style={styles.addRowBtn} onPress={addAdvIssueItem}>
+                    <MaterialCommunityIcons name="plus" size={20} color="#FFFFFF" />
+                  </TouchableOpacity>
+                </View>
+                {issueAdvInput.weight ? (
+                  <View style={styles.advCalcHint}>
+                    <Text style={styles.advCalcText}>
+                      {issueAdvInput.weight} ÷ ₹{ftRate} = {issueAdvCalc?.gross ?? '0'}g{issueAdvInput.touch ? `  ×  ${issueAdvInput.touch}%  →  Pure: ${issueAdvCalc?.purity ?? '0'}g` : ''}
+                    </Text>
+                  </View>
+                ) : null}
                 {issueItems.map(item => (
                   <View key={item.id} style={styles.tableRow}>
                     <Text style={[styles.cell, {flex: 2}]}>{item.itemName}</Text>
@@ -350,13 +494,52 @@ const B2BCalculationPage = ({ navigation }) => {
               <Card style={styles.tableCard}>
                 <Text style={styles.tableTitle}>Receipt Entry</Text>
                 <View style={styles.inputRow}>
-                  <TextInput style={[styles.input, {flex: 2}]} placeholder="Item" placeholderTextColor="#9CA3AF" value={receiptInput.itemName} onChangeText={t => updateReceiptInput('itemName', t)} autoCorrect={false} />
-                  <TextInput style={styles.input} placeholder="Result" placeholderTextColor="#9CA3AF" keyboardType="numeric" value={receiptInput.result} onChangeText={t => updateReceiptInput('result', t)} />
+                  <View style={styles.itemSuggestWrap}>
+                    <TextInput style={styles.input} placeholder="Item" placeholderTextColor="#9CA3AF" value={receiptInput.itemName} onChangeText={t => { updateReceiptInput('itemName', t); setReceiptSuggestOpen(true); }} autoCorrect={false} />
+                    <SuggestionDropdown
+                      suggestions={receiptSuggestions}
+                      visible={receiptSuggestOpen}
+                      onSelect={(name) => { updateReceiptInput('itemName', name); setReceiptSuggestOpen(false); }}
+                    />
+                  </View>
+                  <TextInput style={styles.input} placeholder="Weight" placeholderTextColor="#9CA3AF" keyboardType="numeric" value={receiptInput.result} onChangeText={t => updateReceiptInput('result', t)} />
                   <TextInput style={styles.input} placeholder="Touch%" placeholderTextColor="#9CA3AF" keyboardType="numeric" value={receiptInput.touch} onChangeText={t => updateReceiptInput('touch', t)} />
                   <TouchableOpacity style={styles.addRowBtn} onPress={addReceiptItem}>
                     <MaterialCommunityIcons name="plus" size={20} color="#FFFFFF" />
                   </TouchableOpacity>
                 </View>
+                {/* Advanced Row: Weight − Sub */}
+                <View style={styles.advRowDivider}>
+                  <View style={styles.advDividerLine} />
+                  <Text style={styles.advDividerLabel}>W − Sub</Text>
+                  <View style={styles.advDividerLine} />
+                </View>
+                <View style={[styles.inputRow, { zIndex: 4 }]}>
+                  <View style={[styles.itemSuggestWrap, { flex: 3, zIndex: 8 }]}>
+                    <TextInput style={styles.input} placeholder="Item" placeholderTextColor="#9CA3AF" value={receiptAdvInput.itemName} onChangeText={t => { updateReceiptAdvInput('itemName', t); setReceiptAdvSuggestOpen(true); }} autoCorrect={false} />
+                    <SuggestionDropdown suggestions={receiptAdvSuggestions} visible={receiptAdvSuggestOpen} onSelect={name => { updateReceiptAdvInput('itemName', name); setReceiptAdvSuggestOpen(false); }} />
+                  </View>
+                  <TextInput style={styles.input} placeholder="Weight" placeholderTextColor="#9CA3AF" keyboardType="numeric" value={receiptAdvInput.weight} onChangeText={t => updateReceiptAdvInput('weight', t)} />
+                </View>
+                <View style={[styles.inputRow, { zIndex: 3, marginTop: -4 }]}>
+                  <TextInput style={styles.input} placeholder="Sub" placeholderTextColor="#9CA3AF" keyboardType="numeric" value={receiptAdvInput.sub} onChangeText={t => updateReceiptAdvInput('sub', t)} />
+                  <TextInput style={styles.input} placeholder="Touch%" placeholderTextColor="#9CA3AF" keyboardType="numeric" value={receiptAdvInput.touch} onChangeText={t => updateReceiptAdvInput('touch', t)} />
+                  <View style={[styles.input, { flex: 1.5, backgroundColor: '#F3F4F6', justifyContent: 'center' }]}>
+                    <Text style={{ color: receiptAdvCalc ? '#10B981' : '#9CA3AF', fontWeight: receiptAdvCalc ? 'bold' : 'normal', fontSize: 13 }}>
+                      {receiptAdvCalc ? `${receiptAdvCalc.purity}g` : 'Pure'}
+                    </Text>
+                  </View>
+                  <TouchableOpacity style={styles.addRowBtn} onPress={addAdvReceiptItem}>
+                    <MaterialCommunityIcons name="plus" size={20} color="#FFFFFF" />
+                  </TouchableOpacity>
+                </View>
+                {receiptAdvInput.weight ? (
+                  <View style={styles.advCalcHint}>
+                    <Text style={styles.advCalcText}>
+                      {receiptAdvInput.weight} − {receiptAdvInput.sub || '0'} = {receiptAdvCalc?.result ?? '0'}g{receiptAdvInput.touch ? `  ×  ${receiptAdvInput.touch}%  →  Pure: ${receiptAdvCalc?.purity ?? '0'}g` : ''}
+                    </Text>
+                  </View>
+                ) : null}
                 {receiptItems.map(item => (
                   <View key={item.id} style={styles.tableRow}>
                     <Text style={[styles.cell, {flex: 2}]}>{item.itemName}</Text>
@@ -403,8 +586,12 @@ const B2BCalculationPage = ({ navigation }) => {
               <Card style={styles.summaryCard}>
                 <Text style={styles.summaryTitle}>Final Settlement</Text>
                 <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>{totals.balanceLabel}</Text>
-                  <Text style={[styles.summaryValue, { color: totals.balanceColor }]}>{totals.balanceValue}g</Text>
+                  <Text style={[styles.summaryLabel, { color: totals.balanceDisplay.color }]}>
+                    {totals.balanceDisplay.label} :
+                  </Text>
+                  <Text style={[styles.summaryValue, { color: totals.balanceDisplay.color }]}>
+                    {totals.balanceDisplay.value}
+                  </Text>
                 </View>
                 <TouchableOpacity
                   style={[styles.gstToggle, enableGst && styles.gstToggleActive]}
@@ -438,12 +625,45 @@ const B2BCalculationPage = ({ navigation }) => {
   );
 };
 
-const InfoItem = ({ label, value, color }) => (
+const InfoItem = ({ label, value, color, balanceDisplay }) => (
   <View style={styles.infoItem}>
     <Text style={styles.infoLabel}>{label}</Text>
-    <Text style={[styles.infoValue, color && { color }]}>{value}</Text>
+    {balanceDisplay ? (
+      <View
+        style={[
+          styles.infoBalancePill,
+          { backgroundColor: balanceDisplay.bg, borderColor: balanceDisplay.border }
+        ]}
+      >
+        <Text style={[styles.infoBalanceText, { color: balanceDisplay.color }]}>
+          {balanceDisplay.label} : {balanceDisplay.value}
+        </Text>
+      </View>
+    ) : (
+      <Text style={[styles.infoValue, color && { color }]}>{value}</Text>
+    )}
   </View>
 );
+
+const SuggestionDropdown = ({ suggestions, visible, onSelect }) => {
+  if (!visible || !suggestions.length) return null;
+
+  return (
+    <View style={styles.suggestionMenu}>
+      {suggestions.map((name) => (
+        <TouchableOpacity
+          key={name}
+          style={styles.suggestionItem}
+          onPress={() => onSelect(name)}
+          activeOpacity={0.75}
+        >
+          <MaterialCommunityIcons name="history" size={14} color="#64748B" />
+          <Text style={styles.suggestionText}>{name}</Text>
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+};
 
 const styles = StyleSheet.create({
   container: {
@@ -503,9 +723,18 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     marginTop: 4,
   },
+  customerCardBalance: {
+    marginLeft: spacing.sm,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    minWidth: 126,
+    alignItems: 'center',
+  },
   balanceText: {
-    fontWeight: 'bold',
-    fontSize: moderateScale(14),
+    fontWeight: '900',
+    fontSize: moderateScale(12),
   },
   selectedSection: {
     padding: horizontalPadding,
@@ -562,6 +791,17 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#111827',
   },
+  infoBalancePill: {
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  infoBalanceText: {
+    fontSize: moderateScale(13),
+    fontWeight: '900',
+  },
   tableCard: {
     marginBottom: spacing.lg,
   },
@@ -574,9 +814,16 @@ const styles = StyleSheet.create({
   inputRow: {
     flexDirection: 'row',
     flexWrap: 'nowrap',
-    alignItems: 'stretch',
+    alignItems: 'flex-start',
     marginBottom: spacing.md,
     gap: 8,
+    zIndex: 5,
+  },
+  itemSuggestWrap: {
+    flex: 2,
+    minWidth: 0,
+    position: 'relative',
+    zIndex: 10,
   },
   input: {
     backgroundColor: '#FFFFFF',
@@ -588,6 +835,38 @@ const styles = StyleSheet.create({
     minWidth: 0,
     fontSize: moderateScale(14),
     color: '#111827',
+  },
+  suggestionMenu: {
+    position: 'absolute',
+    top: 48,
+    left: 0,
+    right: 0,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 8,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    elevation: 8,
+    overflow: 'hidden',
+    zIndex: 20,
+  },
+  suggestionItem: {
+    minHeight: 38,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    paddingHorizontal: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  suggestionText: {
+    flex: 1,
+    fontSize: moderateScale(13),
+    fontWeight: '700',
+    color: '#1F2937',
   },
   addRowBtn: {
     backgroundColor: '#2563EB',
@@ -691,6 +970,38 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: moderateScale(16),
     fontWeight: 'bold',
+  },
+  advRowDivider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+    marginBottom: spacing.sm,
+  },
+  advDividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#E5E7EB',
+  },
+  advDividerLabel: {
+    marginHorizontal: 8,
+    fontSize: moderateScale(11),
+    fontWeight: '600',
+    color: '#9CA3AF',
+    letterSpacing: 0.5,
+  },
+  advCalcHint: {
+    backgroundColor: '#F0FDF4',
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginBottom: spacing.sm,
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+  },
+  advCalcText: {
+    fontSize: moderateScale(12),
+    color: '#065F46',
+    fontWeight: '500',
   },
 });
 

@@ -5,11 +5,12 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import Header from '../components/Header';
 import Card from '../components/Card';
 import { AuthContext } from '../context/AuthContext';
 import { horizontalPadding, moderateScale, spacing } from '../utils/responsive';
+import { getDueBalanceDisplay } from '../utils/balanceDisplay';
+import { deleteBillFromDb, fetchAllBills } from '../services/api';
 
 const BillHistoryPage = ({ navigation }) => {
   const { gstBillEnabled, isAdmin } = useContext(AuthContext);
@@ -36,61 +37,62 @@ const BillHistoryPage = ({ navigation }) => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const loadLocalBills = async () => {
+  const applySearch = useCallback((sourceBills, text) => {
+    const query = text.trim().toLowerCase();
+    if (!query) {
+      setFilteredBills(sourceBills);
+      return;
+    }
+
+    setFilteredBills(sourceBills.filter(b =>
+      b.customerName?.toLowerCase().includes(query) ||
+      b.customerId?.customerName?.toLowerCase().includes(query) ||
+      String(b.billNo).includes(query)
+    ));
+  }, []);
+
+  const loadBills = useCallback(async (queryOverride = '') => {
     try {
-      const storedBills = await AsyncStorage.getItem('bills');
-      if (storedBills !== null) {
-        // Sort by date (newest first), show only regular bills (not GST)
-        const parsed = JSON.parse(storedBills);
-        const regular = parsed.filter(b => !b.billType || b.billType === 'REGULAR');
-        regular.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-        setBills(regular);
-        setFilteredBills(regular);
-      } else {
-        setBills([]);
-        setFilteredBills([]);
-      }
+      const dbBills = await fetchAllBills();
+      const sortedBills = [...dbBills].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      setBills(sortedBills);
+      applySearch(sortedBills, queryOverride);
     } catch (e) {
-      Alert.alert('Error', 'Failed to load local bill history.');
+      Alert.alert('Error', 'Failed to load bill history from database.');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [applySearch]);
 
   useEffect(() => {
     // Reload bills every time the screen is focused
     const unsubscribe = navigation.addListener('focus', () => {
       setLoading(true);
-      loadLocalBills();
+      setSearchQuery('');
+      loadBills();
     });
+    setLoading(true);
+    setSearchQuery('');
+    loadBills();
     return unsubscribe;
-  }, [navigation]);
+  }, [navigation, loadBills]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     setSearchQuery('');
-    loadLocalBills();
-  }, []);
+    loadBills('');
+  }, [loadBills]);
 
   const handleSearch = (text) => {
     setSearchQuery(text);
-    if (!text.trim()) {
-      setFilteredBills(bills);
-      return;
-    }
-    const lowerText = text.toLowerCase();
-    const filtered = bills.filter(b => 
-      b.customerName?.toLowerCase().includes(lowerText) || 
-      String(b.billNo).includes(lowerText)
-    );
-    setFilteredBills(filtered);
+    applySearch(bills, text);
   };
 
   const deleteBill = async (billNo) => {
     Alert.alert(
       'Delete Bill',
-      `Are you sure you want to delete Bill #${billNo} from history?`,
+      `Are you sure you want to delete Bill #${billNo} from database history?`,
       [
         { text: 'Cancel', style: 'cancel' },
         { 
@@ -98,13 +100,14 @@ const BillHistoryPage = ({ navigation }) => {
           style: 'destructive',
           onPress: async () => {
             try {
+              const result = await deleteBillFromDb(billNo);
+              if (!result?.success) {
+                Alert.alert('Error', result?.message || 'Failed to delete bill.');
+                return;
+              }
               const updatedBills = bills.filter(b => b.billNo !== billNo);
-              await AsyncStorage.setItem('bills', JSON.stringify(updatedBills));
               setBills(updatedBills);
-              setFilteredBills(updatedBills.filter(b => 
-                b.customerName?.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                String(b.billNo).includes(searchQuery.toLowerCase())
-              ));
+              applySearch(updatedBills, searchQuery);
             } catch (e) {
               Alert.alert('Error', 'Failed to delete bill.');
             }
@@ -119,7 +122,10 @@ const BillHistoryPage = ({ navigation }) => {
     return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
   };
 
-  const renderBillItem = ({ item }) => (
+  const renderBillItem = ({ item }) => {
+    const balanceDisplay = getDueBalanceDisplay(item.finalBalance);
+
+    return (
     <Card style={styles.billCard}>
       <TouchableOpacity 
         style={styles.cardContent}
@@ -139,8 +145,8 @@ const BillHistoryPage = ({ navigation }) => {
         <View style={styles.cardFooter}>
           <View>
             <Text style={styles.balanceLabel}>Final Balance</Text>
-            <Text style={[styles.balanceValue, { color: item.finalBalance >= 0 ? '#EF4444' : '#10B981' }]}>
-              {item.finalBalance >= 0 ? 'OB' : 'AB'}: {Math.abs(item.finalBalance).toFixed(3)}g
+            <Text style={[styles.balanceValue, { color: balanceDisplay.color }]}>
+              {balanceDisplay.text}
             </Text>
           </View>
           <TouchableOpacity onPress={() => deleteBill(item.billNo)} style={styles.deleteBtn}>
@@ -149,12 +155,13 @@ const BillHistoryPage = ({ navigation }) => {
         </View>
       </TouchableOpacity>
     </Card>
-  );
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
       <Header 
-        title="Local Bill History"
+        title="Bill History"
         showBack={true}
         onBackPress={() => navigation.goBack()}
       />
@@ -189,7 +196,7 @@ const BillHistoryPage = ({ navigation }) => {
               <View style={styles.emptyState}>
                 <MaterialCommunityIcons name="file-document-outline" size={64} color="#D1D5DB" />
                 <Text style={styles.emptyText}>No bills available</Text>
-                <Text style={styles.emptySubText}>Bills saved locally will appear here.</Text>
+                <Text style={styles.emptySubText}>Bills saved to MongoDB will appear here.</Text>
               </View>
             }
           />

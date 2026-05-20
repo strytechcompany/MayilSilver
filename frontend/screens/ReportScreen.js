@@ -9,6 +9,7 @@ import Header from '../components/Header';
 import { fetchDailyReport } from '../services/api';
 import { AuthContext } from '../context/AuthContext';
 import { horizontalPadding, moderateScale, spacing } from '../utils/responsive';
+import { getDueBalanceDisplay } from '../utils/balanceDisplay';
 
 // ── Date helpers ──────────────────────────────────────────────
 const pad = (n) => String(n).padStart(2, '0');
@@ -219,7 +220,10 @@ const ReportScreen = ({ navigation }) => {
   const gstBills = reportData?.gstBills || [];
 
   // ── B2B Transaction Card ──────────────────────────────────
-  const renderB2BCard = (item, idx) => (
+  const renderB2BCard = (item, idx) => {
+    const balanceDisplay = getDueBalanceDisplay(item.finalBalance);
+
+    return (
     <View key={item._id || idx} style={styles.txnCard}>
       <View style={styles.txnHeader}>
         <View style={styles.billBadge}>
@@ -265,16 +269,17 @@ const ReportScreen = ({ navigation }) => {
           <MaterialCommunityIcons
             name="scale-balance"
             size={16}
-            color={item.finalBalance >= 0 ? '#EF4444' : '#10B981'}
+            color={balanceDisplay.color}
           />
           <Text style={styles.statLabel}>Balance</Text>
-          <Text style={[styles.statValue, { color: item.finalBalance >= 0 ? '#EF4444' : '#10B981' }]}>
-            {item.finalBalance >= 0 ? 'OB' : 'AB'} {Math.abs(item.finalBalance || 0).toFixed(3)}g
+          <Text style={[styles.statValue, { color: balanceDisplay.color }]}>
+            {balanceDisplay.text}
           </Text>
         </View>
       </View>
     </View>
-  );
+    );
+  };
 
   // ── GST Transaction Card ──────────────────────────────────
   const renderGSTCard = (item, idx) => (

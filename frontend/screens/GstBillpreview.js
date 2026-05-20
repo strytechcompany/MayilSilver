@@ -30,6 +30,9 @@ import { horizontalPadding, moderateScale, spacing } from '../utils/responsive';
 const LOGO_ASSET = require('../assets/logo.png');
 const backend_url = base_url.replace(/\/api\/?$/, '');
 
+// Module-level cache so repeated mounts never re-read the file
+let _cachedGstLogoDataUri = '';
+
 // ── Premium Silver Jewellery Theme ────────────────────────────────────────────
 const C = {
   dark:        '#1C2B3A',   // deep charcoal-navy — primary brand
@@ -222,15 +225,17 @@ const GstBillpreview = ({ navigation, route }) => {
 
   const ensureLogoDataUri = useCallback(async () => {
     if (logoDataUri) return logoDataUri;
+    if (_cachedGstLogoDataUri) {
+      setLogoDataUri(_cachedGstLogoDataUri);
+      return _cachedGstLogoDataUri;
+    }
     try {
-      // fromModule + downloadAsync guarantees a local file:// URI on native
       const asset = Asset.fromModule(LOGO_ASSET);
       await asset.downloadAsync();
 
       const rawUri = asset.localUri || asset.uri || '';
       if (!rawUri) return '';
 
-      // If already a local file path, read directly; otherwise cache-download first
       let fileUri = rawUri;
       if (!rawUri.startsWith('file://') && !rawUri.startsWith('/')) {
         const cached = `${FileSystem.cacheDirectory}gst_logo_pdf.png`;
@@ -238,10 +243,9 @@ const GstBillpreview = ({ navigation, route }) => {
         fileUri = dl;
       }
 
-      const base64 = await FileSystem.readAsStringAsync(fileUri, {
-        encoding: 'base64',
-      });
+      const base64 = await FileSystem.readAsStringAsync(fileUri, { encoding: 'base64' });
       const dataUri = `data:image/png;base64,${base64}`;
+      _cachedGstLogoDataUri = dataUri;
       setLogoDataUri(dataUri);
       return dataUri;
     } catch (err) {
@@ -335,7 +339,10 @@ const GstBillpreview = ({ navigation, route }) => {
       }
 
       const resolvedLogo = await ensureLogoDataUri();
-      const logoForHtml = profile.logoBase64 || resolvedLogo;
+      const rawLogo = profile.logoBase64 || resolvedLogo;
+      const logoForHtml = rawLogo && !rawLogo.startsWith('data:') && !rawLogo.startsWith('http')
+        ? `data:image/png;base64,${rawLogo}`
+        : rawLogo;
       const html = buildInvoiceHtml(workingTransaction, invoiceSummary, gstSettings, logoForHtml, profile, workingQrSvg);
       if (type === 'print') {
         await Print.printAsync({ html });

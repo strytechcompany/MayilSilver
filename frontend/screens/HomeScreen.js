@@ -12,17 +12,49 @@ import { fetchRecentTransactions, fetchAllCustomers } from '../services/api';
 import { AppContext } from '../context/AppContext';
 import { AuthContext } from '../context/AuthContext';
 import { contentWidth, horizontalPadding, moderateScale, spacing } from '../utils/responsive';
+import { getDueBalanceDisplay } from '../utils/balanceDisplay';
 
 const { width, height } = Dimensions.get('window');
 const RUPEE = '\u20B9';
 
 const HomeScreen = ({ navigation }) => {
   const { ftRate, updateFtRate, goldRate, updateGoldRate } = useContext(AppContext);
-  const { logout, gstBillEnabled, isAdmin } = useContext(AuthContext);
-  // GST sub-user: gstBillEnabled=true AND not admin → see only GST pages
-  const isGstUser = gstBillEnabled && !isAdmin;
-  // Regular sub-user or admin: show regular pages
-  const showRegular = isAdmin || !gstBillEnabled;
+  const { logout, gstBillEnabled, isAdmin, allowedPages } = useContext(AuthContext);
+
+  // Migration: old 6-module keys → granular page keys for backward compat
+  const OLD_MODULE_MIGRATION = {
+    b2b:           ['b2b_calculation', 'customer_list', 'bill_history', 'mini_statement', 'b2b_reports'],
+    gst:           ['gst_customer', 'gst_settings', 'gst_history'],
+    payment:       ['payment', 'payment_history'],
+    daily_expense: ['daily_expense'],
+    kadai_document:['kadai_document'],
+    settings:      ['settings'],
+  };
+
+  // canAccess:
+  //   isAdmin           → always true (all pages)
+  //   allowedPages=null → legacy user: use gstBillEnabled fallback
+  //   allowedPages=[]   → explicitly zero pages granted → nothing visible
+  //   allowedPages=[…]  → granular page key check (old module keys are expanded)
+  const canAccess = useCallback((pageKey) => {
+    if (isAdmin) return true;
+    if (allowedPages === null || allowedPages === undefined) {
+      // Legacy fallback for accounts created before the permission system
+      const GST_KEYS = ['gst_customer', 'gst_settings', 'gst_history'];
+      const B2B_KEYS = ['b2b_calculation', 'customer_list', 'bill_history', 'mini_statement', 'b2b_reports'];
+      if (GST_KEYS.includes(pageKey)) return !!gstBillEnabled;
+      if (pageKey === 'payment' || pageKey === 'payment_history' || pageKey === 'settings') return true;
+      if (B2B_KEYS.includes(pageKey)) return !gstBillEnabled;
+      return !gstBillEnabled;
+    }
+    // Expand old module keys so workers created before the granular system still work
+    const expanded = new Set(allowedPages);
+    allowedPages.forEach((k) => {
+      if (OLD_MODULE_MIGRATION[k]) OLD_MODULE_MIGRATION[k].forEach((gk) => expanded.add(gk));
+    });
+    return expanded.has(pageKey);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin, allowedPages, gstBillEnabled]);
   const [recentTransactions, setRecentTransactions] = useState([]);
   const [customerCount, setCustomerCount] = useState(0);
   const [loadingTxns, setLoadingTxns] = useState(false);
@@ -158,11 +190,11 @@ const HomeScreen = ({ navigation }) => {
               onRightIconPress={openFtEditModal}
             />
             <DashboardCard
-              title="Gold Rate"
+              title="Silver Rate"
               value={`${RUPEE}${goldRate}`}
               icon="cash-multiple"
               color="#B45309"
-              subtitle="Current gold rate"
+              subtitle="Current silver rate"
               rightIcon="pencil"
               onRightIconPress={openGoldEditModal}
             />
@@ -180,92 +212,56 @@ const HomeScreen = ({ navigation }) => {
         <View style={styles.sectionContainer}>
           <Text style={styles.sectionTitle}>Main Actions</Text>
           <View style={styles.gridContainer}>
-            {/* ── Regular billing (hidden for GST-only sub-users) ── */}
-            {showRegular && (
-              <ActionCard
-                title="B2B Calculation"
-                icon="calculator-variant"
-                onPress={() => navigateTo('B2BCalculation')}
-              />
+            {/* ── B2B pages (granular keys) ─────────────────────── */}
+            {canAccess('b2b_calculation') && (
+              <ActionCard title="B2B Calculation" icon="calculator-variant" onPress={() => navigateTo('B2BCalculation')} />
             )}
-            {showRegular && (
-              <ActionCard
-                title="Customer List"
-                icon="account-multiple"
-                onPress={() => navigateTo('CustomerDataList')}
-              />
+            {canAccess('customer_list') && (
+              <ActionCard title="Customer List" icon="account-multiple" onPress={() => navigateTo('CustomerDataList')} />
             )}
-            {showRegular && (
-              <ActionCard
-                title="Bill History"
-                icon="receipt"
-                onPress={() => navigateTo('BillHistory')}
-              />
+            {canAccess('bill_history') && (
+              <ActionCard title="Bill History" icon="receipt" onPress={() => navigateTo('BillHistory')} />
             )}
-            {showRegular && (
-              <ActionCard
-                title="Mini Statement"
-                icon="file-chart"
-                onPress={() => navigateTo('MiniStatement')}
-              />
+            {canAccess('mini_statement') && (
+              <ActionCard title="Mini Statement" icon="file-chart" onPress={() => navigateTo('MiniStatement')} />
             )}
-            {showRegular && (
-              <ActionCard
-                title="B2B Reports"
-                icon="chart-bar"
-                onPress={() => navigateTo('Report')}
-              />
+            {canAccess('b2b_reports') && (
+              <ActionCard title="B2B Reports" icon="chart-bar" onPress={() => navigateTo('Report')} />
             )}
 
-            {/* ── Admin-only tools ── */}
+            {/* ── Payment pages ─────────────────────────────────── */}
+            {canAccess('payment') && (
+              <ActionCard title="Payment" icon="qrcode-scan" onPress={() => navigateTo('Payment')} />
+            )}
+            {canAccess('payment_history') && (
+              <ActionCard title="Payment History" icon="history" onPress={() => navigateTo('PaymentHistory')} />
+            )}
+
+            {/* ── GST pages ─────────────────────────────────────── */}
+            {canAccess('gst_customer') && (
+              <ActionCard title="GST Customer" icon="account-tie" onPress={() => navigateTo('GSTCustomer')} />
+            )}
+            {canAccess('gst_settings') && (
+              <ActionCard title="GST Settings" icon="file-cog" onPress={() => navigateTo('GSTSettings')} />
+            )}
+            {canAccess('gst_history') && (
+              <ActionCard title="GST History" icon="receipt-clock" onPress={() => navigateTo('GSTBillHistory')} />
+            )}
+
+            {/* ── Tools ─────────────────────────────────────────── */}
+            {canAccess('daily_expense') && (
+              <ActionCard title="Daily Expense" icon="cash-multiple" onPress={() => navigateTo('DailyExpense')} />
+            )}
+            {canAccess('kadai_document') && (
+              <ActionCard title="Kadai Document" icon="file-document" onPress={() => navigateTo('KadaiDocument')} />
+            )}
+            {canAccess('settings') && (
+              <ActionCard title="Settings" icon="cog" onPress={() => navigateTo('Settings')} />
+            )}
+
+            {/* ── Admin-only ────────────────────────────────────── */}
             {isAdmin && (
-              <ActionCard
-                title="Work List"
-                icon="clipboard-list"
-                onPress={() => navigateTo('WorkList')}
-              />
-            )}
-
-            {/* ── Always visible ── */}
-            <ActionCard
-              title="Payment"
-              icon="qrcode-scan"
-              onPress={() => navigateTo('Payment')}
-            />
-            <ActionCard
-              title="Settings"
-              icon="cog"
-              onPress={() => navigateTo('Settings')}
-            />
-
-            {/* ── GST billing (visible for admin + GST sub-users) ── */}
-            {gstBillEnabled && (
-              <ActionCard
-                title="GST Customer"
-                icon="account-tie"
-                onPress={() => navigateTo('GSTCustomer')}
-              />
-            )}
-            {gstBillEnabled && (
-              <ActionCard
-                title="GST Settings"
-                icon="file-cog"
-                onPress={() => navigateTo('GSTSettings')}
-              />
-            )}
-            {gstBillEnabled && (
-              <ActionCard
-                title="GST History"
-                icon="receipt-clock"
-                onPress={() => navigateTo('GSTBillHistory')}
-              />
-            )}
-            {gstBillEnabled && (
-              <ActionCard
-                title="GST Report"
-                icon="chart-arc"
-                onPress={() => navigateTo('Report')}
-              />
+              <ActionCard title="Work List" icon="clipboard-list" onPress={() => navigateTo('WorkList')} />
             )}
           </View>
         </View>
@@ -274,9 +270,11 @@ const HomeScreen = ({ navigation }) => {
         <View style={styles.sectionContainer}>
           <View style={styles.recentHeader}>
             <Text style={styles.sectionTitle}>Recent Activity</Text>
-            <TouchableOpacity onPress={() => navigateTo('BillHistory')}>
-              <Text style={styles.seeAllText}>View All</Text>
-            </TouchableOpacity>
+            {canAccess('bill_history') && (
+              <TouchableOpacity onPress={() => navigateTo('BillHistory')}>
+                <Text style={styles.seeAllText}>View All</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           {loadingTxns ? (
@@ -287,7 +285,10 @@ const HomeScreen = ({ navigation }) => {
               <Text style={styles.emptyText}>No recent activity found</Text>
             </View>
           ) : (
-            recentTransactions.map((txn) => (
+            recentTransactions.map((txn) => {
+              const balanceDisplay = getDueBalanceDisplay(txn.finalBalance);
+
+              return (
               <View key={txn._id} style={styles.activityRow}>
                 <View style={styles.activityIcon}>
                   <MaterialCommunityIcons name="swap-horizontal" size={20} color="#4B5563" />
@@ -300,16 +301,19 @@ const HomeScreen = ({ navigation }) => {
                     Bill #{txn.billNo} • {formatDate(txn.createdAt)}
                   </Text>
                 </View>
-                <View style={styles.activityValue}>
-                  <Text style={[
-                    styles.balanceAmount,
-                    { color: txn.finalBalance >= 0 ? '#EF4444' : '#10B981' }
-                  ]}>
-                    {txn.finalBalance >= 0 ? 'OB' : 'AB'}: {Math.abs(txn.finalBalance).toFixed(3)}g
+                <View
+                  style={[
+                    styles.activityValue,
+                    { backgroundColor: balanceDisplay.bg, borderColor: balanceDisplay.border }
+                  ]}
+                >
+                  <Text style={[styles.balanceAmount, { color: balanceDisplay.color }]}>
+                    {balanceDisplay.text}
                   </Text>
                 </View>
               </View>
-            ))
+              );
+            })
           )}
         </View>
 
@@ -349,7 +353,7 @@ const HomeScreen = ({ navigation }) => {
       <Modal visible={isGoldModalVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
-            <Text style={styles.modalTitle}>Edit Gold Rate</Text>
+            <Text style={styles.modalTitle}>Edit Silver Rate</Text>
             <View style={styles.modalInputWrapper}>
               <Text style={styles.currencySymbol}>{RUPEE}</Text>
               <TextInput
@@ -509,8 +513,16 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   balanceAmount: {
-    fontSize: moderateScale(14),
-    fontWeight: 'bold',
+    fontSize: moderateScale(12),
+    fontWeight: '900',
+  },
+  activityValue: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+    marginLeft: spacing.sm,
+    alignItems: 'center',
   },
   emptyCard: {
     backgroundColor: '#FFFFFF',

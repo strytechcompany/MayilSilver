@@ -68,10 +68,11 @@ const LoginScreen = () => {
     if (result.success) {
       await login({
         gstBillEnabled: result.gstBillEnabled !== false,
-        role: result.role || 'user',
-        userId: result.userId || '',
-        email: result.email || normalizedEmail,
-        userName: result.userName || '',
+        role:           result.role         || 'user',
+        userId:         result.userId        || '',
+        email:          result.email         || normalizedEmail,
+        userName:       result.userName      || '',
+        allowedPages:   Array.isArray(result.allowedPages) ? result.allowedPages : [],
       });
       return;
     }

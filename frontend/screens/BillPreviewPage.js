@@ -32,8 +32,7 @@ const C = {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const toNumber  = (v) => Number(v) || 0;
-const fmt3      = (v, d = 3) => toNumber(v).toFixed(d);
-const fmt2      = (v)        => toNumber(v).toFixed(2);
+const fmt1      = (v)        => toNumber(v).toFixed(1);
 
 const fmtDate = (s) => {
   const d = new Date(s);
@@ -58,11 +57,11 @@ const SectionHead = ({ title }) => (
   </View>
 );
 
-const DetailRow = ({ label, value }) => (
+const DetailRow = ({ label, value, toneColor }) => (
   <View style={styles.detailRow}>
-    <Text style={styles.detailLabel}>{label}</Text>
+    <Text style={[styles.detailLabel, toneColor && { color: toneColor }]}>{label}</Text>
     <Text style={styles.detailColon}>:</Text>
-    <Text style={styles.detailValue}>{value}</Text>
+    <Text style={[styles.detailValue, toneColor && { color: toneColor, fontWeight: '900' }]}>{value}</Text>
   </View>
 );
 
@@ -72,6 +71,17 @@ const TH = ({ children, flex = 1, align = 'left' }) => (
 const TD = ({ children, flex = 1, align = 'left', bold }) => (
   <Text style={[bold ? styles.tdBold : styles.td, { flex, textAlign: align }]}>{children}</Text>
 );
+
+const getBalanceDisplay = (balance) => {
+  const amount = toNumber(balance);
+  const isAdvance = amount >= 0;
+
+  return {
+    label: isAdvance ? 'Advance' : 'Balance',
+    value: `${fmt1(Math.abs(amount))}g`,
+    color: isAdvance ? '#059669' : '#DC2626',
+  };
+};
 
 // ── Main Component ────────────────────────────────────────────────────────────
 const BillPreviewPage = ({ navigation, route }) => {
@@ -121,10 +131,8 @@ const BillPreviewPage = ({ navigation, route }) => {
   const cashPurity = toNumber(billData.cashTotalPurity);
   const finalBal   = toNumber(billData.finalBalance);
 
-  const prevBalColor  = prevBal  >= 0 ? '#DC2626' : '#10B981';
-  const finalBalColor = finalBal >= 0 ? '#2563EB' : '#10B981';
-  const prevBalLabel  = prevBal  >= 0 ? 'Old Balance'   : 'Advance Balance';
-  const finalBalLabel = finalBal >= 0 ? 'Old Balance'   : 'Advance Balance';
+  const prevBalDisplay = getBalanceDisplay(prevBal);
+  const finalBalDisplay = getBalanceDisplay(finalBal);
   const createdBy = billData.createdBy || currentUser?.userName || currentUser?.email || 'Admin';
 
   // ── Actions ───────────────────────────────────────────────────────────────
@@ -200,47 +208,13 @@ const BillPreviewPage = ({ navigation, route }) => {
               <DetailRow label="Date"       value={fmtDate(billData.createdAt)} />
               <DetailRow label="Time"       value={fmtTime(billData.createdAt)} />
               <DetailRow label="By"         value={createdBy} />
-              <DetailRow label={prevBalLabel} value={`${fmt3(Math.abs(prevBal))} g`} />
+              <DetailRow label={prevBalDisplay.label} value={prevBalDisplay.value} toneColor={prevBalDisplay.color} />
             </View>
           </View>
 
           <View style={styles.dashedDivider} />
 
-          {/* 4. RECEIPT Table */}
-          <SectionHead title="RECEIPT" />
-          <View style={styles.tableWrap}>
-            <View style={styles.tableHead}>
-              <TH flex={2}>Item Name</TH>
-              <TH flex={1.3} align="right">Weight</TH>
-              <TH flex={1.3} align="right">Result</TH>
-              <TH flex={1}   align="right">Touch</TH>
-              <TH flex={1.3} align="right">Pure</TH>
-            </View>
-            {receiptItems.length > 0 ? (
-              <>
-                {receiptItems.map((item, i) => (
-                  <View key={i} style={[styles.tableRow, i % 2 === 1 && styles.tableRowAlt]}>
-                    <TD flex={2}   >{item.itemName}</TD>
-                    <TD flex={1.3} align="right">{fmt3(item.weight)}</TD>
-                    <TD flex={1.3} align="right">{fmt3(item.result)}</TD>
-                    <TD flex={1}   align="right">{fmt2(item.touch)}</TD>
-                    <TD flex={1.3} align="right">{fmt3(item.purity)}</TD>
-                  </View>
-                ))}
-                <View style={styles.totalRow}>
-                  <TD flex={2}   bold>TOTAL</TD>
-                  <TD flex={1.3} bold align="right">{fmt3(receiptItems.reduce((s,i)=>s+toNumber(i.weight),0))}</TD>
-                  <TD flex={1.3} bold align="right">{fmt3(receiptItems.reduce((s,i)=>s+toNumber(i.result),0))}</TD>
-                  <TD flex={1}></TD>
-                  <TD flex={1.3} bold align="right">{fmt3(recpTotal)}</TD>
-                </View>
-              </>
-            ) : (
-              <Text style={styles.noData}>No receipt items</Text>
-            )}
-          </View>
-
-          {/* 5. ISSUE Table */}
+          {/* 4. ISSUE Table */}
           <SectionHead title="ISSUE" />
           <View style={styles.tableWrap}>
             <View style={styles.tableHead}>
@@ -255,22 +229,56 @@ const BillPreviewPage = ({ navigation, route }) => {
                 {issueItems.map((item, i) => (
                   <View key={i} style={[styles.tableRow, i % 2 === 1 && styles.tableRowAlt]}>
                     <TD flex={2}   >{item.itemName}</TD>
-                    <TD flex={1.3} align="right">{fmt3(item.grossWeight)}</TD>
-                    <TD flex={1.3} align="right">{fmt3(item.netWeight)}</TD>
-                    <TD flex={1}   align="right">{fmt2(item.touch)}</TD>
-                    <TD flex={1.3} align="right">{fmt3(item.purity)}</TD>
+                    <TD flex={1.3} align="right">{fmt1(item.grossWeight)}</TD>
+                    <TD flex={1.3} align="right">{fmt1(item.netWeight)}</TD>
+                    <TD flex={1}   align="right">{fmt1(item.touch)}</TD>
+                    <TD flex={1.3} align="right">{fmt1(item.purity)}</TD>
                   </View>
                 ))}
                 <View style={styles.totalRow}>
                   <TD flex={2}   bold>TOTAL</TD>
-                  <TD flex={1.3} bold align="right">{fmt3(issueItems.reduce((s,i)=>s+toNumber(i.grossWeight),0))}</TD>
-                  <TD flex={1.3} bold align="right">{fmt3(issueItems.reduce((s,i)=>s+toNumber(i.netWeight),0))}</TD>
+                  <TD flex={1.3} bold align="right">{fmt1(issueItems.reduce((s,i)=>s+toNumber(i.grossWeight),0))}</TD>
+                  <TD flex={1.3} bold align="right">{fmt1(issueItems.reduce((s,i)=>s+toNumber(i.netWeight),0))}</TD>
                   <TD flex={1}></TD>
-                  <TD flex={1.3} bold align="right">{fmt3(issueTotal)}</TD>
+                  <TD flex={1.3} bold align="right">{fmt1(issueTotal)}</TD>
                 </View>
               </>
             ) : (
               <Text style={styles.noData}>No issue items</Text>
+            )}
+          </View>
+
+          {/* 5. RECEIVED Table */}
+          <SectionHead title="RECEIVED" />
+          <View style={styles.tableWrap}>
+            <View style={styles.tableHead}>
+              <TH flex={2}>Item Name</TH>
+              <TH flex={1.3} align="right">Weight</TH>
+              <TH flex={1.3} align="right">Result</TH>
+              <TH flex={1}   align="right">Touch</TH>
+              <TH flex={1.3} align="right">Pure</TH>
+            </View>
+            {receiptItems.length > 0 ? (
+              <>
+                {receiptItems.map((item, i) => (
+                  <View key={i} style={[styles.tableRow, i % 2 === 1 && styles.tableRowAlt]}>
+                    <TD flex={2}   >{item.itemName}</TD>
+                    <TD flex={1.3} align="right">{fmt1(item.weight)}</TD>
+                    <TD flex={1.3} align="right">{fmt1(item.result)}</TD>
+                    <TD flex={1}   align="right">{fmt1(item.touch)}</TD>
+                    <TD flex={1.3} align="right">{fmt1(item.purity)}</TD>
+                  </View>
+                ))}
+                <View style={styles.totalRow}>
+                  <TD flex={2}   bold>TOTAL</TD>
+                  <TD flex={1.3} bold align="right">{fmt1(receiptItems.reduce((s,i)=>s+toNumber(i.weight),0))}</TD>
+                  <TD flex={1.3} bold align="right">{fmt1(receiptItems.reduce((s,i)=>s+toNumber(i.result),0))}</TD>
+                  <TD flex={1}></TD>
+                  <TD flex={1.3} bold align="right">{fmt1(recpTotal)}</TD>
+                </View>
+              </>
+            ) : (
+              <Text style={styles.noData}>No receipt items</Text>
             )}
           </View>
 
@@ -281,7 +289,7 @@ const BillPreviewPage = ({ navigation, route }) => {
               cashEntries.map((cash, i) => (
                 <View key={i} style={[styles.tableRow, i % 2 === 1 && styles.tableRowAlt]}>
                   <Text style={styles.td}>
-                    ₹{fmt2(cash.cashAmount)}  /  {toNumber(cash.ftRate).toFixed(2)}  =  {fmt3(cash.pure)} g
+                    ₹{fmt1(cash.cashAmount)}  /  {fmt1(cash.ftRate)}  =  {fmt1(cash.pure)} g
                   </Text>
                 </View>
               ))
@@ -297,7 +305,7 @@ const BillPreviewPage = ({ navigation, route }) => {
           <View style={styles.summaryTable}>
             <View style={styles.summaryRow}>
               <View style={[styles.summaryCell, styles.summaryCellBorder]}>
-                <Text style={[styles.summaryTh, { color: prevBalColor }]}>Advance Balance</Text>
+                <Text style={[styles.summaryTh, { color: prevBalDisplay.color }]}>{prevBalDisplay.label}</Text>
               </View>
               <View style={[styles.summaryCell, styles.summaryCellBorder]}>
                 <Text style={styles.summaryTh}>RECEIPT</Text>
@@ -309,24 +317,24 @@ const BillPreviewPage = ({ navigation, route }) => {
                 <Text style={styles.summaryTh}>CASH</Text>
               </View>
               <View style={styles.summaryCell}>
-                <Text style={[styles.summaryTh, { color: finalBalColor }]}>Old Balance</Text>
+                <Text style={[styles.summaryTh, { color: finalBalDisplay.color }]}>{finalBalDisplay.label}</Text>
               </View>
             </View>
             <View style={[styles.summaryRow, styles.summaryDataRow]}>
               <View style={[styles.summaryCell, styles.summaryCellBorder]}>
-                <Text style={[styles.summaryTd, { color: prevBalColor }]}>{fmt3(Math.abs(prevBal))}</Text>
+                <Text style={[styles.summaryTd, { color: prevBalDisplay.color }]}>{prevBalDisplay.value}</Text>
               </View>
               <View style={[styles.summaryCell, styles.summaryCellBorder]}>
-                <Text style={styles.summaryTd}>{fmt3(recpTotal)}</Text>
+                <Text style={styles.summaryTd}>{fmt1(recpTotal)}</Text>
               </View>
               <View style={[styles.summaryCell, styles.summaryCellBorder]}>
-                <Text style={styles.summaryTd}>{fmt3(issueTotal)}</Text>
+                <Text style={styles.summaryTd}>{fmt1(issueTotal)}</Text>
               </View>
               <View style={[styles.summaryCell, styles.summaryCellBorder]}>
-                <Text style={styles.summaryTd}>{fmt3(cashPurity)}</Text>
+                <Text style={styles.summaryTd}>{fmt1(cashPurity)}</Text>
               </View>
               <View style={styles.summaryCell}>
-                <Text style={[styles.summaryTd, { color: finalBalColor }]}>{fmt3(Math.abs(finalBal))}</Text>
+                <Text style={[styles.summaryTd, { color: finalBalDisplay.color }]}>{finalBalDisplay.value}</Text>
               </View>
             </View>
           </View>
@@ -334,45 +342,34 @@ const BillPreviewPage = ({ navigation, route }) => {
           {/* Formula */}
           <View style={styles.formulaBox}>
             <Text style={styles.formulaText}>
-              {fmt3(Math.abs(prevBal))} + {fmt3(issueTotal)} - ({fmt3(recpTotal)} + {fmt3(cashPurity)}) = {fmt3(Math.abs(finalBal))}
+              {fmt1(Math.abs(prevBal))} + {fmt1(issueTotal)} - ({fmt1(recpTotal)} + {fmt1(cashPurity)}) = {fmt1(Math.abs(finalBal))}
             </Text>
           </View>
 
           {/* 8. Total / Balance Bar */}
           <View style={styles.totalBar}>
-            <Text style={styles.totalBarLabel}>{finalBalLabel}</Text>
-            <Text style={[styles.totalBarValue, { color: finalBalColor === '#2563EB' ? C.silverLight : '#6EE7B7' }]}>
-              {fmt3(Math.abs(finalBal))} g
+            <Text style={[styles.totalBarLabel, { color: finalBalDisplay.color }]}>{finalBalDisplay.label}</Text>
+            <Text style={[styles.totalBarValue, { color: finalBalDisplay.color }]}>
+              {finalBalDisplay.value}
             </Text>
           </View>
 
-          {/* 9. Signature Section */}
-          <View style={styles.sigSection}>
-            <View style={styles.sigLeft}>
-              <Text style={styles.sigLabel}>Customer Signature</Text>
-            </View>
-            <View style={styles.sigRight}>
-              <Text style={styles.sigCompany}>Mayil Silver</Text>
-              <Text style={styles.sigLabel}>Authorised Signatory</Text>
-            </View>
-          </View>
-
-          {/* 10. Bottom Bar */}
+          {/* 9. Bottom Bar */}
           <View style={styles.bottomBar}>
             <View style={styles.bottomItem}>
               <Text style={styles.bottomLabel}>Issue Total</Text>
               <Text style={styles.bottomColon}> : </Text>
-              <Text style={styles.bottomValue}>{fmt3(issueTotal)} g</Text>
+              <Text style={styles.bottomValue}>{fmt1(issueTotal)} g</Text>
             </View>
             <View style={[styles.bottomItem, styles.bottomItemMid]}>
               <Text style={styles.bottomLabel}>Receipt Total</Text>
               <Text style={styles.bottomColon}> : </Text>
-              <Text style={styles.bottomValue}>{fmt3(recpTotal)} g</Text>
+              <Text style={styles.bottomValue}>{fmt1(recpTotal)} g</Text>
             </View>
             <View style={[styles.bottomItem, styles.bottomItemRight]}>
-              <Text style={styles.bottomLabel}>{finalBalLabel}</Text>
+              <Text style={[styles.bottomLabel, { color: finalBalDisplay.color }]}>{finalBalDisplay.label}</Text>
               <Text style={styles.bottomColon}> : </Text>
-              <Text style={styles.bottomValue}>{fmt3(Math.abs(finalBal))} g</Text>
+              <Text style={[styles.bottomValue, { color: finalBalDisplay.color }]}>{finalBalDisplay.value}</Text>
             </View>
           </View>
 
@@ -409,15 +406,15 @@ const styles = StyleSheet.create({
 
   // Paper
   paper: {
-    backgroundColor: C.white, borderWidth:1.5, borderColor: C.borderDark,
+    backgroundColor: C.white, borderWidth:1, borderColor: C.borderDark,
     shadowColor:'#4A6070', shadowOffset:{width:0,height:3}, shadowOpacity:0.15, shadowRadius:6, elevation:4,
-    paddingBottom: 2,
+    paddingBottom: 0,
   },
 
   // 1. Top Strip
   topStrip: {
     flexDirection:'row', justifyContent:'space-between', alignItems:'center',
-    paddingHorizontal:14, paddingVertical:8,
+    paddingHorizontal:14, paddingVertical:7,
     backgroundColor: C.white, borderBottomWidth:1, borderBottomColor: C.border,
   },
   topStripSpacer:   { flex:1, fontSize:11 },
@@ -425,13 +422,13 @@ const styles = StyleSheet.create({
   topStripOriginal: { flex:1, fontSize:11, fontWeight:'800', color:C.textMid, letterSpacing:0.3, textAlign:'right' },
 
   // 2. Banner
-  banner: { backgroundColor: C.silverBg2, paddingHorizontal:14, paddingVertical:8, borderBottomWidth:1, borderBottomColor: C.border },
+  banner: { backgroundColor: C.silverBg2, paddingHorizontal:14, paddingVertical:9, borderBottomWidth:1, borderBottomColor: C.border },
   bannerTopRow:  { flexDirection:'row', justifyContent:'space-between', marginBottom:6 },
   bannerLeft:    { fontSize:12, fontWeight:'600', color: C.silverLight, letterSpacing:0.2 },
   bannerRight:   { fontSize:12, fontWeight:'600', color: C.silverLight, letterSpacing:0.2 },
   bannerLogoRow: { flexDirection:'row', alignItems:'center', justifyContent:'center', gap:10, marginBottom:2 },
   bannerLogo:    { width:42, height:42, borderRadius:4 },
-  bannerName:    { fontSize:24, fontWeight:'900', color:C.dark, letterSpacing:1.2 },
+  bannerName:    { fontSize:24, fontWeight:'900', color:C.dark, letterSpacing:1.2, textAlign:'center' },
   bannerTagline: { textAlign:'center', fontSize:11, color:C.textLight, letterSpacing:0.2 },
 
   // 3. Details Row
@@ -442,47 +439,54 @@ const styles = StyleSheet.create({
   detailLabel:  { minWidth:70, fontSize: moderateScale(11), fontWeight:'800', color:C.textMid },
   detailColon:  { width:10, textAlign:'center', color:C.textLight, fontWeight:'700' },
   detailValue:  { flex:1, fontSize: moderateScale(11), color:C.text, fontWeight:'600' },
-  dashedDivider:{ borderBottomWidth:1, borderStyle:'dashed', borderColor:C.textMid, marginHorizontal:12, marginVertical:8 },
+  dashedDivider:{ borderBottomWidth:1, borderStyle:'dashed', borderColor:C.borderDark, marginHorizontal:12, marginVertical:9 },
 
   // Section Heading
   sectionHead: {
-    backgroundColor: C.white, borderBottomWidth:1.5, borderColor: C.textMid,
-    paddingHorizontal:12, paddingVertical:5,
+    backgroundColor: C.silverBg, borderTopWidth:1, borderBottomWidth:1,
+    borderColor: C.borderDark, marginHorizontal:12,
+    paddingHorizontal:10, paddingVertical:6,
   },
-  sectionHeadText: { fontSize: moderateScale(12), fontWeight:'900', color:C.dark, letterSpacing:0.6, textTransform:'uppercase' },
+  sectionHeadText: { fontSize: moderateScale(12), fontWeight:'900', color:C.dark, letterSpacing:0.6, textTransform:'uppercase', textAlign:'center' },
 
   // Table
-  tableWrap: { borderBottomWidth:1, borderBottomColor: C.border, marginHorizontal:12 },
-  tableHead: {
-    flexDirection:'row', backgroundColor:C.white,
-    paddingHorizontal:8, paddingVertical:6,
-    borderBottomWidth:1.5, borderBottomColor: C.textMid,
+  tableWrap: {
+    borderLeftWidth:1, borderRightWidth:1, borderBottomWidth:1,
+    borderColor: C.borderDark, marginHorizontal:12, marginBottom:8,
   },
-  th: { fontSize: moderateScale(10), fontWeight:'900', color:C.textMid, letterSpacing:0.2 },
-  tableRow:    { flexDirection:'row', paddingHorizontal:8, paddingVertical:7 },
+  tableHead: {
+    flexDirection:'row', backgroundColor:C.dark,
+    paddingHorizontal:8, paddingVertical:6,
+    borderBottomWidth:1, borderBottomColor: C.borderDark,
+  },
+  th: { fontSize: moderateScale(10), fontWeight:'900', color:C.white, letterSpacing:0.2 },
+  tableRow:    { flexDirection:'row', paddingHorizontal:8, paddingVertical:7, alignItems:'center' },
   tableRowAlt: { backgroundColor: C.silverBg2 },
   td:     { fontSize: moderateScale(11.5), color:C.text },
   tdBold: { fontSize: moderateScale(11.5), color:C.dark, fontWeight:'700' },
   totalRow: {
     flexDirection:'row', paddingHorizontal:8, paddingVertical:8,
-    borderTopWidth:1.5, borderTopColor: C.textMid,
+    borderTopWidth:1, borderTopColor: C.borderDark,
     backgroundColor: C.silverBg,
   },
   noData: { fontSize: moderateScale(13), color:C.textLight, padding:12 },
 
   // Cash
-  cashSection: { borderBottomWidth:1, borderBottomColor: C.border, marginHorizontal:12 },
+  cashSection: {
+    borderLeftWidth:1, borderRightWidth:1, borderBottomWidth:1,
+    borderColor: C.borderDark, marginHorizontal:12, marginBottom:8,
+  },
 
   // Summary Table
-  summaryTable:     { borderWidth:1, borderColor: C.borderDark, marginHorizontal:12, marginBottom:6 },
+  summaryTable:     { borderWidth:1, borderColor: C.borderDark, marginHorizontal:12, marginBottom:6, backgroundColor:C.white },
   summaryRow:       { flexDirection:'row', borderBottomWidth:1, borderBottomColor: C.borderDark },
   summaryDataRow:   { borderBottomWidth:0 },
-  summaryCell:      { flex:1, minHeight:42, paddingHorizontal:3, paddingVertical:8, alignItems:'center', justifyContent:'center' },
-  summaryCellBorder:{ borderRightWidth:1, borderRightColor: C.border },
-  summaryTh:  { fontSize: moderateScale(9), fontWeight:'900', color:C.dark, textAlign:'center' },
-  summaryTd:  { fontSize: moderateScale(11.5), fontWeight:'800', color:C.dark, textAlign:'center' },
+  summaryCell:      { flex:1, minHeight:40, paddingHorizontal:3, paddingVertical:8, alignItems:'center', justifyContent:'center' },
+  summaryCellBorder:{ borderRightWidth:1, borderRightColor: C.borderDark },
+  summaryTh:  { fontSize: moderateScale(9), fontWeight:'900', color:C.dark, textAlign:'center', textTransform:'uppercase' },
+  summaryTd:  { fontSize: moderateScale(12), fontWeight:'900', color:C.dark, textAlign:'center' },
 
-  formulaBox: { borderBottomWidth:1, borderBottomColor: C.border, padding:8, alignItems:'center', backgroundColor: C.offWhite, marginHorizontal:12 },
+  formulaBox: { borderWidth:1, borderTopWidth:0, borderColor: C.borderDark, padding:8, alignItems:'center', backgroundColor: C.offWhite, marginHorizontal:12 },
   formulaText:{ fontSize: moderateScale(11), fontWeight:'700', color:C.textMid },
 
   // Total Bar (mirrors GST grand-total)
@@ -493,13 +497,6 @@ const styles = StyleSheet.create({
   },
   totalBarLabel: { fontSize:14, fontWeight:'800', color: C.silverLight, letterSpacing:0.5 },
   totalBarValue: { fontSize:20, fontWeight:'900', letterSpacing:0.5 },
-
-  // Signature
-  sigSection: { flexDirection:'row', minHeight:80, borderBottomWidth:1, borderBottomColor: C.border },
-  sigLeft:    { flex:1, justifyContent:'flex-end', alignItems:'center', padding:10, borderRightWidth:1, borderRightColor: C.border },
-  sigRight:   { flex:1, justifyContent:'flex-end', alignItems:'center', padding:10 },
-  sigLabel:   { fontSize: moderateScale(12), fontWeight:'800', color:C.dark, letterSpacing:0.3 },
-  sigCompany: { fontSize: moderateScale(11), color:C.textLight, marginBottom:5 },
 
   // Bottom Bar
   bottomBar: { flexDirection:'row', backgroundColor: C.darkMid, paddingHorizontal:14, paddingVertical:8 },

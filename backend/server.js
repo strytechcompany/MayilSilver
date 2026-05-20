@@ -174,6 +174,8 @@ const BillSchema = new mongoose.Schema({
   receiptTotalPurity: { type: Number, default: 0 },
   cashTotalAmount: { type: Number, default: 0 },
   cashTotalPurity: { type: Number, default: 0 },
+  createdBy: { type: String, default: 'admin' },
+  createdById: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   createdAt: { type: Date, default: Date.now }
 });
 
@@ -296,10 +298,13 @@ const PaymentTransaction = mongoose.model('PaymentTransaction', PaymentTransacti
 
 const UserSchema = new mongoose.Schema({
   userName:       { type: String, default: '' },
+  name:           { type: String, default: '' },
+  phone:          { type: String, default: '' },
   email:          { type: String, required: true, unique: true, lowercase: true, trim: true },
   password:       { type: String, required: true },
   role:           { type: String, default: 'user' },
   gstBillEnabled: { type: Boolean, default: false },
+  allowedPages:   { type: [String], default: [] },
 }, { timestamps: true });
 const User = mongoose.model('User', UserSchema);
 const ShopProfile = mongoose.model('ShopProfile', ShopProfileSchema);
@@ -346,9 +351,12 @@ const DailyExpense = mongoose.model('DailyExpense', DailyExpenseSchema);
 const sanitizeUser = (user) => ({
   _id: user._id,
   userName: user.userName || '',
+  name: user.name || '',
+  phone: user.phone || '',
   email: user.email,
   role: user.role || 'user',
   gstBillEnabled: user.gstBillEnabled,
+  allowedPages: user.allowedPages || [],
   createdAt: user.createdAt,
   updatedAt: user.updatedAt,
 });
@@ -882,7 +890,10 @@ router.post('/login', async (req, res) => {
       role: user.role || 'user',
       userId: user._id,
       userName: user.userName,
+      name: user.name || '',
+      phone: user.phone || '',
       email: user.email,
+      allowedPages: user.allowedPages || [],
     });
   } catch (err) {
     console.log('[LOGIN] error', err?.message || err);
@@ -903,15 +914,18 @@ router.get('/users', async (req, res) => {
 
 router.post('/users', async (req, res) => {
   try {
-    const { userName, email, password, gstBillEnabled = false } = req.body;
+    const { userName, name, phone, email, password, gstBillEnabled = false, allowedPages = [] } = req.body;
     if (!email || !password) return res.status(400).json({ success: false, message: 'Email and password required' });
     const normalizedEmail = email.toLowerCase().trim();
     const user = await User.create({
       userName: (userName || buildDefaultUserName(normalizedEmail)).trim(),
+      name: (name || '').trim(),
+      phone: (phone || '').trim(),
       email: normalizedEmail,
       password: await hashPassword(password),
       role: 'user',
       gstBillEnabled,
+      allowedPages: Array.isArray(allowedPages) ? allowedPages : [],
     });
     res.json({ success: true, user: sanitizeUser(user) });
   } catch (err) {
@@ -922,15 +936,18 @@ router.post('/users', async (req, res) => {
 
 router.put('/users/:id', async (req, res) => {
   try {
-    const { userName, email, password, gstBillEnabled } = req.body;
+    const { userName, name, phone, email, password, gstBillEnabled, allowedPages } = req.body;
     const update = {};
     if (userName !== undefined)             update.userName       = userName.trim();
-    if (email)                       update.email          = email.toLowerCase().trim();
-    if (password)                    update.password       = await hashPassword(password);
-    if (gstBillEnabled !== undefined) update.gstBillEnabled = gstBillEnabled;
+    if (name !== undefined)                 update.name           = name.trim();
+    if (phone !== undefined)                update.phone          = phone.trim();
+    if (email)                              update.email          = email.toLowerCase().trim();
+    if (password)                           update.password       = await hashPassword(password);
+    if (gstBillEnabled !== undefined)       update.gstBillEnabled = gstBillEnabled;
+    if (Array.isArray(allowedPages))        update.allowedPages   = allowedPages;
     const user = await User.findByIdAndUpdate(req.params.id, update, { new: true }).select('-password');
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
-    res.json({ success: true, user });
+    res.json({ success: true, user: sanitizeUser(user) });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
   }
@@ -1267,6 +1284,7 @@ router.post('/transactions', async (req, res) => {
 
     const billNo = await getNextBillNo();
     const customer = await Customer.findById(customerId);
+    const user = await resolveCurrentUser(req);
 
     const normalizedIssueItems = normalizeIssueItems(issueItems);
     const normalizedReceiptItems = normalizeReceiptItems(receiptItems);
@@ -1287,7 +1305,9 @@ router.post('/transactions', async (req, res) => {
       finalBalance: toNumber(finalBalance),
       issueTotalPurity,
       receiptTotalPurity,
-      cashTotalAmount
+      cashTotalAmount,
+      createdBy: user?.userName || user?.email || req.body.createdBy || 'admin',
+      createdById: user?._id || null
     });
 
     await bill.save();
@@ -1321,6 +1341,7 @@ router.post('/transactions/save', async (req, res) => {
 
     const customer = await Customer.findById(customerId);
     if (!customer) return res.status(404).json({ success: false, message: 'Customer not found' });
+    const user = await resolveCurrentUser(req);
 
     const normalizedIssueItems = normalizeIssueItems(issueItems);
     const normalizedReceiptItems = normalizeReceiptItems(receiptItems);
@@ -1351,7 +1372,9 @@ router.post('/transactions/save', async (req, res) => {
       issueTotalPurity: parseFloat(issueTotalPurity.toFixed(3)),
       receiptTotalPurity: parseFloat(receiptTotalPurity.toFixed(3)),
       cashTotalAmount: parseFloat(cashTotalAmount.toFixed(3)),
-      cashTotalPurity: parseFloat(cashTotalPurity.toFixed(3))
+      cashTotalPurity: parseFloat(cashTotalPurity.toFixed(3)),
+      createdBy: user?.userName || user?.email || req.body.createdBy || 'admin',
+      createdById: user?._id || null
     });
 
     await bill.save();
@@ -1407,10 +1430,56 @@ router.get('/transactions/recent', async (req, res) => {
   }
 });
 
+router.get('/bills', async (req, res) => {
+  try {
+    const user = await resolveCurrentUser(req);
+    const isAdminRequest = !user || user.role === 'admin' || user.email === ADMIN_EMAIL;
+    const query = isAdminRequest
+      ? {}
+      : {
+          $or: [
+            { createdById: user._id },
+            { createdBy: user.userName || '' },
+            { createdBy: user.email || '' },
+          ],
+        };
+
+    const bills = await Bill.find(query)
+      .sort({ createdAt: -1 })
+      .populate('customerId', 'customerName phone address gstin');
+
+    res.json({ success: true, bills });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 router.get('/bills/history/:customerId', async (req, res) => {
   try {
     const bills = await Bill.find({ customerId: req.params.customerId }).sort({ createdAt: -1 });
     res.json({ success: true, bills });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+router.delete('/bills/:billNo', async (req, res) => {
+  try {
+    const user = await resolveCurrentUser(req);
+    const billNo = parseInt(req.params.billNo, 10);
+    const query = { billNo };
+
+    if (user && user.role !== 'admin' && user.email !== ADMIN_EMAIL) {
+      query.$or = [
+        { createdById: user._id },
+        { createdBy: user.userName || '' },
+        { createdBy: user.email || '' },
+      ];
+    }
+
+    const bill = await Bill.findOneAndDelete(query);
+    if (!bill) return res.status(404).json({ success: false, message: 'Bill not found' });
+    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

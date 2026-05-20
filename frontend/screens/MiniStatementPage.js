@@ -18,6 +18,7 @@ import * as Sharing from 'expo-sharing';
 import Header from '../components/Header';
 import { fetchAllCustomers, fetchMiniStatement } from '../services/api';
 import { horizontalPadding, moderateScale, spacing } from '../utils/responsive';
+import { getDueBalanceDisplay } from '../utils/balanceDisplay';
 
 const DEBIT_COLOR = '#EF4444';
 const CREDIT_COLOR = '#10B981';
@@ -289,7 +290,7 @@ const MiniStatementPage = ({ navigation, route }) => {
         <View style={styles.summaryDivider} />
         <SummaryItem label="Total Credit" value={`${formatNumber(summary.credit)}g`} color={CREDIT_COLOR} />
         <View style={styles.summaryDivider} />
-        <SummaryItem label="Closing Balance" value={`${summary.balanceLabel} ${formatNumber(summary.balance)}g`} color={BALANCE_COLOR} />
+        <SummaryItem label="Closing Balance" value={summary.balanceDisplay?.text || '-'} color={summary.balanceDisplay?.color || BALANCE_COLOR} />
       </View>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -321,8 +322,8 @@ const MiniStatementPage = ({ navigation, route }) => {
                 <Text style={[styles.td, styles.amountCol, { color: CREDIT_COLOR }]}>
                   {row.credit > 0 ? `${formatNumber(row.credit)}g` : '-'}
                 </Text>
-                <Text style={[styles.td, styles.balanceCol, { color: BALANCE_COLOR }]}>
-                  {row.balanceLabel} {formatNumber(row.balance)}g
+                <Text style={[styles.td, styles.balanceCol, { color: row.balanceDisplay?.color || BALANCE_COLOR }]}>
+                  {row.balanceDisplay?.text || '-'}
                 </Text>
               </View>
             ))
@@ -334,7 +335,7 @@ const MiniStatementPage = ({ navigation, route }) => {
         <Text style={styles.bottomSummaryTitle}>Summary</Text>
         <SummaryLine label="Total Debit" value={`${formatNumber(summary.debit)}g`} color={DEBIT_COLOR} />
         <SummaryLine label="Total Credit" value={`${formatNumber(summary.credit)}g`} color={CREDIT_COLOR} />
-        <SummaryLine label="Closing Balance" value={`${summary.balanceLabel} ${formatNumber(summary.balance)}g`} color={BALANCE_COLOR} />
+        <SummaryLine label="Closing Balance" value={summary.balanceDisplay?.text || '-'} color={summary.balanceDisplay?.color || BALANCE_COLOR} />
       </View>
     </ScrollView>
   );
@@ -445,7 +446,7 @@ const createRow = ({ id, date, type, description, debit, credit, balance }) => (
   credit,
   direction: debit > 0 ? 'debit' : 'credit',
   balance: Math.abs(balance),
-  balanceLabel: balance >= 0 ? 'OB' : 'AB',
+  balanceDisplay: getDueBalanceDisplay(balance),
 });
 
 const buildSummary = (rows, customerInfo) => {
@@ -459,7 +460,7 @@ const buildSummary = (rows, customerInfo) => {
     debit,
     credit,
     balance: Math.abs(signedBalance),
-    balanceLabel: signedBalance >= 0 ? 'OB' : 'AB',
+    balanceDisplay: getDueBalanceDisplay(signedBalance),
   };
 };
 
@@ -473,7 +474,7 @@ const buildPdfHtml = ({ rows, summary, customerName, customerPhone, dateRange })
         <td>${escapeHtml(row.description)}</td>
         <td class="debit">${row.debit > 0 ? `${formatNumber(row.debit)}g` : '-'}</td>
         <td class="credit">${row.credit > 0 ? `${formatNumber(row.credit)}g` : '-'}</td>
-        <td class="balance">${row.balanceLabel} ${formatNumber(row.balance)}g</td>
+        <td class="balance" style="color:${row.balanceDisplay?.color || BALANCE_COLOR}">${row.balanceDisplay?.text || '-'}</td>
       </tr>
     `).join('')
     : '<tr><td colspan="6" class="empty">No transactions available</td></tr>';
@@ -615,7 +616,7 @@ const buildPdfHtml = ({ rows, summary, customerName, customerPhone, dateRange })
           </div>
           <div class="summary-box">
             <div class="label">Closing Balance</div>
-            <div class="value blue">${summary.balanceLabel} ${formatNumber(summary.balance)}g</div>
+            <div class="value blue" style="color:${summary.balanceDisplay?.color || BALANCE_COLOR}">${summary.balanceDisplay?.text || '-'}</div>
           </div>
         </div>
 

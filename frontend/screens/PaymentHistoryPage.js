@@ -6,16 +6,40 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Print from 'expo-print';
+import { Asset } from 'expo-asset';
+import * as FileSystem from 'expo-file-system/legacy';
 import Header from '../components/Header';
 import { fetchPaymentHistoryFromDb, deletePaymentRecord } from '../services/api';
 import { loadGstSettings } from '../services/gstSettings';
 import { loadShopProfile } from '../services/shopProfile';
-import {
-  buildPaymentBillHtml,
-  buildSummary,
-  getLogoDataUri,
-} from '../utils/paymentUtils';
+import { buildPaymentBillHtml, buildSummary } from '../utils/paymentUtils';
 import { horizontalPadding, moderateScale, spacing } from '../utils/responsive';
+
+const LOGO_ASSET = require('../assets/logo.png');
+let _cachedHistoryLogoDataUri = '';
+
+const loadLogoSrc = async (profile) => {
+  if (profile?.logoBase64) {
+    const b = profile.logoBase64;
+    return b.startsWith('data:') ? b : `data:image/png;base64,${b}`;
+  }
+  if (_cachedHistoryLogoDataUri) return _cachedHistoryLogoDataUri;
+  try {
+    const asset = Asset.fromModule(LOGO_ASSET);
+    await asset.downloadAsync();
+    const rawUri = asset.localUri || asset.uri || '';
+    if (!rawUri) return '';
+    let fileUri = rawUri;
+    if (!rawUri.startsWith('file://') && !rawUri.startsWith('/')) {
+      const cached = `${FileSystem.cacheDirectory}history_logo_pdf.png`;
+      const { uri: dl } = await FileSystem.downloadAsync(rawUri, cached);
+      fileUri = dl;
+    }
+    const base64 = await FileSystem.readAsStringAsync(fileUri, { encoding: 'base64' });
+    _cachedHistoryLogoDataUri = `data:image/png;base64,${base64}`;
+    return _cachedHistoryLogoDataUri;
+  } catch { return ''; }
+};
 
 const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
 const endOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
@@ -247,6 +271,8 @@ const PaymentHistoryPage = ({ navigation }) => {
       const [profile, gstSettings] = await Promise.all([loadShopProfile(), loadGstSettings()]);
       const summary = buildSummary(record.cash, record.weight, gstSettings);
       summary.rows[0].particular = record.itemName;
+      const silverRate = parseFloat(record.ftRate) || 0;
+      if (silverRate > 0) summary.rows[0].rateNumeric = silverRate;
 
       const transaction = {
         customerName: record.customerName,
@@ -275,7 +301,7 @@ const PaymentHistoryPage = ({ navigation }) => {
         transaction,
         summary,
         gstSettings,
-        await getLogoDataUri(profile),
+        await loadLogoSrc(profile),
         shopProfileForHtml
       );
       await Print.printAsync({ html });

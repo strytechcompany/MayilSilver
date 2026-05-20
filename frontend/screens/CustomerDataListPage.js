@@ -10,6 +10,35 @@ import Header from '../components/Header';
 import Card from '../components/Card';
 import InputField from '../components/InputField';
 import { horizontalPadding, moderateScale, spacing } from '../utils/responsive';
+import { toNumber } from '../utils/balanceDisplay';
+
+const formatGram = (value) => `${Math.abs(toNumber(value)).toFixed(1)}g`;
+
+const getCustomerBalanceState = (customer) => {
+  const signedBalance = customer?.balance !== undefined && customer?.balance !== null
+    ? toNumber(customer.balance)
+    : toNumber(customer?.ab) - toNumber(customer?.ob);
+
+  if (signedBalance < 0) {
+    return {
+      label: 'Balance',
+      value: formatGram(signedBalance),
+      style: 'balance',
+      icon: 'alert-circle-outline',
+    };
+  }
+
+  if (signedBalance > 0) {
+    return {
+      label: 'Advance',
+      value: formatGram(signedBalance),
+      style: 'advance',
+      icon: 'check-circle-outline',
+    };
+  }
+
+  return null;
+};
 
 const CustomerDataListPage = ({ navigation }) => {
   const [customers, setCustomers] = useState([]);
@@ -221,7 +250,7 @@ const CustomerDataListPage = ({ navigation }) => {
               <View style={styles.row}>
                 <FormInput
                   containerStyle={{ flex: 1, marginRight: 12 }}
-                  label="Old Balance (OB)"
+                  label="Balance"
                   placeholder="0.000"
                   value={customerForm.ob}
                   onChangeText={(t) => updateBalanceField('ob', t)}
@@ -229,7 +258,7 @@ const CustomerDataListPage = ({ navigation }) => {
                 />
                 <FormInput
                   containerStyle={{ flex: 1 }}
-                  label="Advance Balance (AB)"
+                  label="Advance"
                   placeholder="0.000"
                   value={customerForm.ab}
                   onChangeText={(t) => updateBalanceField('ab', t)}
@@ -267,65 +296,71 @@ const CustomerDataListPage = ({ navigation }) => {
                   </Text>
                 </View>
               ) : (
-                filtered.map((customer) => (
-                  <Card key={customer._id} style={styles.customerCard}>
-                    <View style={styles.cardHeader}>
-                      <View style={styles.cardInfo}>
-                        <Text style={styles.customerName}>{customer.customerName}</Text>
-                        <Text style={styles.customerPhone}>{customer.phone}</Text>
-                        {customer.alternativePhone ? (
-                          <Text style={styles.customerAltPhone}>Alt: {customer.alternativePhone}</Text>
-                        ) : null}
-                        {customer.address ? (
-                          <Text style={styles.customerAddress} numberOfLines={1}>{customer.address}</Text>
-                        ) : null}
-                      </View>
-                      <View style={styles.balanceBadge}>
-                        {customer.ob > 0 ? (
-                          <View style={[styles.badge, { backgroundColor: '#FEF2F2', borderColor: '#FECACA' }]}>
-                            <Text style={[styles.badgeLabel, { color: '#EF4444' }]}>OB</Text>
-                            <Text style={[styles.badgeValue, { color: '#EF4444' }]}>{customer.ob.toFixed(3)}g</Text>
-                          </View>
-                        ) : customer.ab > 0 ? (
-                          <View style={[styles.badge, { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' }]}>
-                            <Text style={[styles.badgeLabel, { color: '#10B981' }]}>AB</Text>
-                            <Text style={[styles.badgeValue, { color: '#10B981' }]}>{customer.ab.toFixed(3)}g</Text>
-                          </View>
-                        ) : (
-                          <View style={[styles.badge, { backgroundColor: '#F3F4F6', borderColor: '#E5E7EB' }]}>
-                            <Text style={[styles.badgeValue, { color: '#6B7280' }]}>NIL</Text>
-                          </View>
-                        )}
-                      </View>
-                    </View>
+                filtered.map((customer) => {
+                  const balanceState = getCustomerBalanceState(customer);
+                  const balanceTone = balanceState?.style === 'advance'
+                    ? { badge: styles.advanceBalanceBadge, text: styles.advanceBalanceText }
+                    : { badge: styles.dueBalanceBadge, text: styles.dueBalanceText };
 
-                    <View style={styles.cardActions}>
-                      <TouchableOpacity
-                        style={styles.actionBtn}
-                        onPress={() => navigation.navigate('BillHistory', { customer })}
-                      >
-                        <MaterialCommunityIcons name="receipt" size={16} color="#4B5563" />
-                        <Text style={styles.actionBtnText}>History</Text>
-                      </TouchableOpacity>
-                      <View style={styles.divider} />
-                      <TouchableOpacity
-                        style={styles.actionBtn}
-                        onPress={() => openEditForm(customer)}
-                      >
-                        <MaterialCommunityIcons name="pencil" size={16} color="#4B5563" />
-                        <Text style={styles.actionBtnText}>Edit</Text>
-                      </TouchableOpacity>
-                      <View style={styles.divider} />
-                      <TouchableOpacity
-                        style={styles.actionBtn}
-                        onPress={() => navigation.navigate('MiniStatement', { customer })}
-                      >
-                        <MaterialCommunityIcons name="file-chart" size={16} color="#4B5563" />
-                        <Text style={styles.actionBtnText}>Statement</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </Card>
-                ))
+                  return (
+                    <Card key={customer._id} style={styles.customerCard}>
+                      <View style={styles.cardHeader}>
+                        <View style={styles.cardInfo}>
+                          <Text style={styles.customerName}>{customer.customerName}</Text>
+                          <Text style={styles.customerPhone}>{customer.phone}</Text>
+                          {customer.alternativePhone ? (
+                            <Text style={styles.customerAltPhone}>Alt: {customer.alternativePhone}</Text>
+                          ) : null}
+                          {customer.address ? (
+                            <Text style={styles.customerAddress} numberOfLines={1}>{customer.address}</Text>
+                          ) : null}
+                        </View>
+                        <View style={styles.balanceBadge}>
+                          {balanceState ? (
+                            <View style={[styles.badge, balanceTone.badge]}>
+                              <View style={styles.badgeTitleRow}>
+                                <MaterialCommunityIcons name={balanceState.icon} size={13} color={balanceTone.text.color} />
+                                <Text style={[styles.badgeLabel, balanceTone.text]}>
+                                  {balanceState.label} : {balanceState.value}
+                                </Text>
+                              </View>
+                            </View>
+                          ) : (
+                            <View style={[styles.badge, styles.nilBalanceBadge]}>
+                              <Text style={[styles.badgeValue, styles.nilBalanceText]}>NIL</Text>
+                            </View>
+                          )}
+                        </View>
+                      </View>
+
+                      <View style={styles.cardActions}>
+                        <TouchableOpacity
+                          style={styles.actionBtn}
+                          onPress={() => navigation.navigate('BillHistory', { customer })}
+                        >
+                          <MaterialCommunityIcons name="receipt" size={16} color="#4B5563" />
+                          <Text style={styles.actionBtnText}>History</Text>
+                        </TouchableOpacity>
+                        <View style={styles.divider} />
+                        <TouchableOpacity
+                          style={styles.actionBtn}
+                          onPress={() => openEditForm(customer)}
+                        >
+                          <MaterialCommunityIcons name="pencil" size={16} color="#4B5563" />
+                          <Text style={styles.actionBtnText}>Edit</Text>
+                        </TouchableOpacity>
+                        <View style={styles.divider} />
+                        <TouchableOpacity
+                          style={styles.actionBtn}
+                          onPress={() => navigation.navigate('MiniStatement', { customer })}
+                        >
+                          <MaterialCommunityIcons name="file-chart" size={16} color="#4B5563" />
+                          <Text style={styles.actionBtnText}>Statement</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </Card>
+                  );
+                })
               )}
             </>
           )}
@@ -459,20 +494,48 @@ const styles = StyleSheet.create({
     marginLeft: 12 
   },
   badge: { 
-    borderRadius: 6, 
-    paddingHorizontal: 10, 
-    paddingVertical: 6, 
-    alignItems: 'flex-end', 
-    minWidth: 80,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    alignItems: 'center',
+    minWidth: 128,
     borderWidth: 1,
   },
+  dueBalanceBadge: {
+    backgroundColor: '#FEF2F2',
+    borderColor: '#FCA5A5',
+  },
+  dueBalanceText: {
+    color: '#DC2626',
+  },
+  advanceBalanceBadge: {
+    backgroundColor: '#ECFDF5',
+    borderColor: '#86EFAC',
+  },
+  advanceBalanceText: {
+    color: '#059669',
+  },
+  nilBalanceBadge: {
+    backgroundColor: '#F3F4F6',
+    borderColor: '#E5E7EB',
+    minWidth: 78,
+    alignItems: 'center',
+  },
+  nilBalanceText: {
+    color: '#6B7280',
+  },
+  badgeTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
   badgeLabel: { 
-    fontSize: moderateScale(10), 
-    fontWeight: '600' 
+    fontSize: moderateScale(12),
+    fontWeight: '900',
   },
   badgeValue: { 
-    fontSize: moderateScale(14), 
-    fontWeight: 'bold',
+    fontSize: moderateScale(15),
+    fontWeight: '900',
     marginTop: 2,
   },
   cardActions: {
