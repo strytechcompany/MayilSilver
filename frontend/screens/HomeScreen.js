@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useContext } from 'react';
+import { useState, useEffect, useCallback, useContext } from 'react';
 import {
   Dimensions, Image, StyleSheet, Text, View, ScrollView,
   TouchableOpacity, StatusBar, RefreshControl, ActivityIndicator,
@@ -309,7 +309,18 @@ const HomeScreen = ({ navigation }) => {
               const balanceDisplay = getDueBalanceDisplay(txn.finalBalance);
 
               return (
-              <View key={txn._id} style={styles.activityRow}>
+              <TouchableOpacity
+                key={txn._id}
+                style={styles.activityRow}
+                onPress={() => {
+                  const customer = {
+                    phone: txn.customerId?.phone || txn.phone || '',
+                    customerName: txn.customerId?.customerName || txn.customerName || '',
+                  };
+                  navigation.push('BillPreview', { billData: txn, customer });
+                }}
+                activeOpacity={0.7}
+              >
                 <View style={styles.activityIcon}>
                   <MaterialCommunityIcons name="swap-horizontal" size={20} color="#4B5563" />
                 </View>
@@ -331,7 +342,7 @@ const HomeScreen = ({ navigation }) => {
                     {balanceDisplay.text}
                   </Text>
                 </View>
-              </View>
+              </TouchableOpacity>
               );
             })
           )}

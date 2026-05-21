@@ -24,6 +24,25 @@ import {
   savePaymentItemName,
 } from '../utils/paymentUtils';
 import { horizontalPadding, moderateScale, spacing } from '../utils/responsive';
+import * as FileSystem from 'expo-file-system/legacy';
+
+const BACKEND_URL = (require('../config').base_url || '').replace(/\/api\/?$/, '');
+
+const loadSignatureSrc = async (profile) => {
+  const b64 = profile?.signatureBase64;
+  if (b64) return b64.startsWith('data:') ? b64 : `data:image/png;base64,${b64}`;
+  const url = profile?.signatureUrl;
+  if (url) {
+    try {
+      const fullUrl = url.startsWith('http') ? url : `${BACKEND_URL}${url}`;
+      const cached = `${FileSystem.cacheDirectory}payment_sig_pdf.png`;
+      const { uri: dl } = await FileSystem.downloadAsync(fullUrl, cached);
+      const base64 = await FileSystem.readAsStringAsync(dl, { encoding: 'base64' });
+      if (base64) return `data:image/png;base64,${base64}`;
+    } catch {}
+  }
+  return '';
+};
 
 const createEmptyForm = (invoiceNumber = '') => ({
   userName: '',
@@ -75,6 +94,7 @@ const PaymentPage = ({ navigation }) => {
   const [saving, setSaving] = useState(false);
   const [creatingCustomer, setCreatingCustomer] = useState(false);
   const [customerCreateForm, setCustomerCreateForm] = useState(emptyCustomerForm);
+  const [extraItems, setExtraItems] = useState([]);
 
   const prepareNextPaymentForm = useCallback(async () => {
     try {
@@ -89,6 +109,7 @@ const PaymentPage = ({ navigation }) => {
       setShowSuggestions(false);
       setShowItemSuggestions(false);
       setPaymentMeta({ paymentId: '', invoiceNumber: '' });
+      setExtraItems([]);
     } catch (error) {
       console.error('prepareNextPaymentForm:', error);
       setForm(createEmptyForm('1'));
@@ -97,6 +118,7 @@ const PaymentPage = ({ navigation }) => {
       setShowSuggestions(false);
       setShowItemSuggestions(false);
       setPaymentMeta({ paymentId: '', invoiceNumber: '' });
+      setExtraItems([]);
     }
   }, []);
 
@@ -212,6 +234,31 @@ const PaymentPage = ({ navigation }) => {
     setForm((prev) => ({ ...prev, [key]: value }));
   }, []);
 
+  const addExtraItem = useCallback(() => {
+    setExtraItems((prev) => [
+      ...prev,
+      { id: `ei-${Date.now()}`, itemName: '', rate: String(selectedRateValue || ''), cash: '', weight: '' },
+    ]);
+  }, [selectedRateValue]);
+
+  const updateExtraItem = useCallback((id, field, value) => {
+    setExtraItems((prev) => prev.map((item) => {
+      if (item.id !== id) return item;
+      const updated = { ...item, [field]: value };
+      if (field === 'cash' || field === 'rate') {
+        const cashNum = toNumber(field === 'cash' ? value : updated.cash);
+        const rateNum = toNumber(field === 'rate' ? value : updated.rate);
+        updated.weight = cashNum > 0 && rateNum > 0
+          ? formatWeight(cashNum / rateNum) : '';
+      }
+      return updated;
+    }));
+  }, []);
+
+  const removeExtraItem = useCallback((id) => {
+    setExtraItems((prev) => prev.filter((item) => item.id !== id));
+  }, []);
+
   const filteredCustomers = useMemo(() => {
     const query = form.userName.trim().toLowerCase();
     if (!query) return [];
@@ -228,9 +275,19 @@ const PaymentPage = ({ navigation }) => {
       .slice(0, 8);
   }, [itemSuggestions, form.itemName]);
 
+  const totalCash = useMemo(
+    () => toNumber(form.cash) + extraItems.reduce((s, i) => s + toNumber(i.cash), 0),
+    [form.cash, extraItems]
+  );
+
+  const totalWeight = useMemo(
+    () => toNumber(form.weight) + extraItems.reduce((s, i) => s + toNumber(i.weight), 0),
+    [form.weight, extraItems]
+  );
+
   const summaryPreview = useMemo(
-    () => buildSummary(form.cash, form.weight, null),
-    [form.cash, form.weight]
+    () => buildSummary(totalCash, totalWeight, null),
+    [totalCash, totalWeight]
   );
 
   const selectedRateValue = selectedRateType === 'gold' ? goldRate : ftRate;
@@ -344,8 +401,38 @@ const PaymentPage = ({ navigation }) => {
 
   const persistPayment = async (status) => {
     const gstSettings = await loadGstSettings();
-    const summary = buildSummary(form.cash, form.weight, gstSettings);
-    summary.rows[0].particular = form.itemName.trim();
+
+    const totalCashNum = toNumber(form.cash) + extraItems.reduce((s, i) => s + toNumber(i.cash), 0);
+    const totalWeightNum = toNumber(form.weight) + extraItems.reduce((s, i) => s + toNumber(i.weight), 0);
+
+    const summary = buildSummary(totalCashNum, totalWeightNum, gstSettings);
+
+    // Build per-item rows for the bill HTML
+    const gstPct = toNumber(gstSettings?.cgst) + toNumber(gstSettings?.sgst);
+    const divisor = gstPct > 0 ? 1 + gstPct / 100 : 1;
+    const hsnCode = summary.rows[0]?.hsnCode || '';
+
+    const allItems = [
+      { itemName: form.itemName.trim(), weight: toNumber(form.weight), cash: toNumber(form.cash), rate: toNumber(selectedRateValue) },
+      ...extraItems.map((ei) => ({
+        itemName: ei.itemName.trim(),
+        weight: toNumber(ei.weight),
+        cash: toNumber(ei.cash),
+        rate: toNumber(ei.rate),
+      })),
+    ];
+
+    summary.rows = allItems.map((item) => {
+      const taxableVal = item.cash / divisor;
+      const rateVal = item.weight > 0 ? taxableVal / item.weight : item.rate;
+      return {
+        particular: item.itemName,
+        hsnCode,
+        weightNumeric: item.weight,
+        rateNumeric: rateVal,
+        taxableValueNumeric: taxableVal,
+      };
+    });
 
     const payload = {
       paymentId: paymentMeta.paymentId || undefined,
@@ -357,16 +444,16 @@ const PaymentPage = ({ navigation }) => {
       address: form.address.trim(),
       gstNo: form.gstNo.trim(),
       itemName: form.itemName.trim(),
-      items: [{
-        itemName: form.itemName.trim(),
-        weight: toNumber(form.weight),
-        cash: toNumber(form.cash),
-        ftRate: toNumber(selectedRateValue),
-      }],
-      cash: toNumber(form.cash),
+      items: allItems.map((item) => ({
+        itemName: item.itemName,
+        weight: item.weight,
+        cash: item.cash,
+        ftRate: item.rate,
+      })),
+      cash: totalCashNum,
       ftRate: toNumber(selectedRateValue),
-      weight: toNumber(form.weight),
-      subtotal: toNumber(form.cash),
+      weight: totalWeightNum,
+      subtotal: totalCashNum,
       cgst: summary.cgst,
       sgst: summary.sgst,
       roundOff: summary.roundOff,
@@ -396,6 +483,9 @@ const PaymentPage = ({ navigation }) => {
       const { payment } = await persistPayment('draft');
       const nextInvoiceNumber = await reserveNextInvoiceNumber(PAYMENT_EDITABLE_INVOICE_KEY, payment.invoiceNumber);
       await savePaymentItemName(form.itemName);
+      for (const ei of extraItems) {
+        if (ei.itemName.trim()) await savePaymentItemName(ei.itemName.trim());
+      }
       await loadCustomers();
       await loadItemSuggestions('');
       Alert.alert('Saved', `Payment saved with bill no: ${payment.invoiceNumber}`, [
@@ -408,6 +498,7 @@ const PaymentPage = ({ navigation }) => {
             setShowSuggestions(false);
             setShowItemSuggestions(false);
             setPaymentMeta({ paymentId: '', invoiceNumber: '' });
+            setExtraItems([]);
           }
         }
       ]);
@@ -429,6 +520,11 @@ const PaymentPage = ({ navigation }) => {
         loadShopProfile(),
       ]);
 
+      const [logoSrc, signatureSrc] = await Promise.all([
+        getLogoDataUri(profile),
+        loadSignatureSrc(profile),
+      ]);
+
       const transaction = {
         customerName: payment.customerName,
         phone: payment.phone,
@@ -439,24 +535,28 @@ const PaymentPage = ({ navigation }) => {
       };
 
       const shopProfileForHtml = {
-        name: profile.shopName || '',
-        tagline: profile.tagline || '',
-        gst: profile.gstin || '',
-        phone: profile.phone || '',
-        address: profile.address || '',
-        city: profile.city || '',
-        email: profile.email || '',
-        stateName: profile.stateName || '',
-        stateCode: profile.stateCode || '',
-        financialYear: profile.financialYear || '2025-2026',
+        name:               profile.shopName           || '',
+        tagline:            profile.tagline            || '',
+        gst:                profile.gstin              || '',
+        phone:              profile.phone              || '',
+        altPhone:           profile.altPhone           || '',
+        address:            profile.address            || '',
+        city:               profile.city               || '',
+        email:              profile.email              || '',
+        stateName:          profile.stateName          || '',
+        stateCode:          profile.stateCode          || '',
+        financialYear:      profile.financialYear      || '2025-2026',
         termsAndConditions: profile.termsAndConditions || '',
+        signatureSrc:       signatureSrc               || '',
       };
 
-      const logoSrc = await getLogoDataUri(profile);
       const html = buildPaymentBillHtml(transaction, summary, gstSettings, logoSrc, shopProfileForHtml);
 
       await reserveNextInvoiceNumber(PAYMENT_EDITABLE_INVOICE_KEY, payment.invoiceNumber);
       await savePaymentItemName(form.itemName);
+      for (const ei of extraItems) {
+        if (ei.itemName.trim()) await savePaymentItemName(ei.itemName.trim());
+      }
       await loadCustomers();
       await loadItemSuggestions('');
       await Print.printAsync({ html });
@@ -679,8 +779,23 @@ const PaymentPage = ({ navigation }) => {
               </View>
             </View>
 
+            {extraItems.map((item, index) => (
+              <ExtraItemRow
+                key={item.id}
+                item={item}
+                index={index}
+                onUpdate={updateExtraItem}
+                onRemove={removeExtraItem}
+              />
+            ))}
+
+            <TouchableOpacity style={styles.addItemBtn} onPress={addExtraItem} activeOpacity={0.8}>
+              <MaterialCommunityIcons name="plus-circle-outline" size={18} color="#2563EB" />
+              <Text style={styles.addItemBtnText}>Add Other Item</Text>
+            </TouchableOpacity>
+
             <View style={styles.totalPreview}>
-              <Text style={styles.totalPreviewLabel}>Estimated Total</Text>
+              <Text style={styles.totalPreviewLabel}>Estimated Total{extraItems.length > 0 ? ` (${extraItems.length + 1} items)` : ''}</Text>
               <Text style={styles.totalPreviewValue}>Rs {summaryPreview.grandTotal.toFixed(2)}</Text>
             </View>
           </View>
@@ -836,6 +951,67 @@ const PaymentPage = ({ navigation }) => {
     </SafeAreaView>
   );
 };
+
+const ExtraItemRow = ({ item, index, onUpdate, onRemove }) => (
+  <View style={styles.extraItemCard}>
+    <View style={styles.extraItemHeader}>
+      <Text style={styles.extraItemIndex}>Item {index + 2}</Text>
+      <TouchableOpacity onPress={() => onRemove(item.id)} style={styles.extraItemRemove} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+        <MaterialCommunityIcons name="close-circle" size={20} color="#EF4444" />
+      </TouchableOpacity>
+    </View>
+    <View style={styles.extraRow}>
+      <View style={styles.extraColFull}>
+        <Text style={styles.extraLabel}>Item Name</Text>
+        <TextInput
+          style={styles.extraInput}
+          value={item.itemName}
+          onChangeText={(v) => onUpdate(item.id, 'itemName', v)}
+          placeholder="Enter item name"
+          placeholderTextColor="#9CA3AF"
+        />
+      </View>
+    </View>
+    <View style={styles.extraRow}>
+      <View style={styles.extraCol}>
+        <Text style={styles.extraLabel}>Rate (Rs)</Text>
+        <TextInput
+          style={styles.extraInput}
+          value={item.rate}
+          onChangeText={(v) => onUpdate(item.id, 'rate', v)}
+          placeholder="0.00"
+          placeholderTextColor="#9CA3AF"
+          keyboardType="decimal-pad"
+        />
+      </View>
+      <View style={styles.extraCol}>
+        <Text style={styles.extraLabel}>Amount (Rs)</Text>
+        <TextInput
+          style={[styles.extraInput, styles.extraCashInput]}
+          value={item.cash}
+          onChangeText={(v) => onUpdate(item.id, 'cash', v)}
+          placeholder="0.00"
+          placeholderTextColor="#9CA3AF"
+          keyboardType="decimal-pad"
+        />
+      </View>
+    </View>
+    <View style={styles.extraRow}>
+      <View style={styles.extraCol}>
+        <Text style={styles.extraLabel}>Weight (g)</Text>
+        <TextInput
+          style={[styles.extraInput, styles.extraReadonly]}
+          value={item.weight}
+          editable={false}
+          placeholder="Auto"
+          placeholderTextColor="#9CA3AF"
+        />
+        <Text style={styles.extraHelperText}>Auto = Amount ÷ Rate</Text>
+      </View>
+      <View style={styles.extraCol} />
+    </View>
+  </View>
+);
 
 const FormField = ({ label, children }) => (
   <View style={styles.fieldBlock}>
@@ -1186,6 +1362,91 @@ const styles = StyleSheet.create({
   },
   submitBtnDisabled: { opacity: 0.6 },
   submitBtnText: { color: '#FFFFFF', fontWeight: '800', fontSize: moderateScale(15) },
+  extraItemCard: {
+    marginTop: 10,
+    padding: 12,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+  },
+  extraItemHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  extraItemIndex: {
+    fontSize: moderateScale(13),
+    fontWeight: '700',
+    color: '#374151',
+  },
+  extraItemRemove: {
+    padding: 2,
+  },
+  extraRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 8,
+  },
+  extraCol: {
+    flex: 1,
+  },
+  extraColFull: {
+    flex: 1,
+  },
+  extraLabel: {
+    fontSize: moderateScale(11),
+    fontWeight: '600',
+    color: '#6B7280',
+    marginBottom: 4,
+  },
+  extraHelperText: {
+    marginTop: 4,
+    fontSize: moderateScale(10),
+    color: '#94A3B8',
+  },
+  extraInput: {
+    minHeight: 42,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: moderateScale(13),
+    color: '#111827',
+    backgroundColor: '#FFFFFF',
+  },
+  extraCashInput: {
+    borderColor: '#2563EB',
+    backgroundColor: '#EFF6FF',
+    color: '#1D4ED8',
+    fontWeight: '700',
+  },
+  extraReadonly: {
+    backgroundColor: '#F1F5F9',
+    color: '#0F172A',
+    fontWeight: '700',
+  },
+  addItemBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 10,
+    marginBottom: 2,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    borderRadius: 10,
+    backgroundColor: '#EFF6FF',
+    borderStyle: 'dashed',
+  },
+  addItemBtnText: {
+    color: '#2563EB',
+    fontWeight: '700',
+    fontSize: moderateScale(13),
+  },
 });
 
 export default PaymentPage;

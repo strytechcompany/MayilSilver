@@ -29,6 +29,7 @@ import KadaiDocument from '../screens/KadaiDocument';
 import PaymentPage from '../screens/PaymentPage';
 import PaymentHistoryPage from '../screens/PaymentHistoryPage';
 import PaymentBillPreviewPage from '../screens/PaymentBillPreviewPage';
+import CustomerBillHistoryPage from '../screens/CustomerBillHistoryPage';
 
 const AuthStack = createStackNavigator();
 const HomeStack = createStackNavigator();
@@ -128,7 +129,8 @@ const GuardedGSTBillHistory     = withPermission(GstBillhistory,         ['gst_h
 const GuardedGSTSettings        = withPermission(GSTSettingsPage,        ['gst_settings']);
 const GuardedPayment            = withPermission(PaymentPage,            ['payment']);
 const GuardedPaymentHistory     = withPermission(PaymentHistoryPage,     ['payment_history']);
-const GuardedPaymentBillPreview = withPermission(PaymentBillPreviewPage, ['payment', 'payment_history']); // sub-screen
+const GuardedPaymentBillPreview     = withPermission(PaymentBillPreviewPage,     ['payment', 'payment_history']); // sub-screen
+const GuardedCustomerBillHistory    = withPermission(CustomerBillHistoryPage,    ['customer_list', 'bill_history']);
 const GuardedDailyExpense       = withPermission(DailyExpense,           ['daily_expense']);
 const GuardedKadaiDocument      = withPermission(KadaiDocument,          ['kadai_document']);
 const GuardedSettings           = withPermission(SettingsPage,           ['settings']);
@@ -167,7 +169,8 @@ const MainNavigator = () => (
     <HomeStack.Screen name="GSTSettings"        component={GuardedGSTSettings}        options={noHeader} />
     <HomeStack.Screen name="Payment"            component={GuardedPayment}            options={noHeader} />
     <HomeStack.Screen name="PaymentHistory"     component={GuardedPaymentHistory}     options={noHeader} />
-    <HomeStack.Screen name="PaymentBillPreview" component={GuardedPaymentBillPreview} options={noHeader} />
+    <HomeStack.Screen name="PaymentBillPreview"  component={GuardedPaymentBillPreview}  options={noHeader} />
+    <HomeStack.Screen name="CustomerBillHistory" component={GuardedCustomerBillHistory} options={noHeader} />
     <HomeStack.Screen name="DailyExpense"       component={GuardedDailyExpense}       options={noHeader} />
     <HomeStack.Screen name="KadaiDocument"      component={GuardedKadaiDocument}      options={noHeader} />
     <HomeStack.Screen name="Settings"           component={GuardedSettings}           options={noHeader} />

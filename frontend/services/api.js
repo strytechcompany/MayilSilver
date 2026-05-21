@@ -369,6 +369,16 @@ export const updateCustomer = async (id, updateData) => {
   }
 };
 
+export const deleteCustomer = async (id) => {
+  try {
+    const res = await apiFetch(`${base_url}${CUSTOMER_API_PATH}/${id}`, { method: 'DELETE' });
+    return handleResponse(res);
+  } catch (error) {
+    console.error('deleteCustomer Error:', error);
+    return { success: false, message: 'Network error' };
+  }
+};
+
 export const searchCustomers = async (search = '') => {
   try {
     const query = search ? `?search=${encodeURIComponent(search)}` : '';
@@ -491,6 +501,15 @@ export const deletePaymentRecord = async (id) => {
     return handleResponse(res);
   } catch (error) {
     console.error('deletePaymentRecord Error:', error);
+    return { success: false, message: 'Network error' };
+  }
+};
+
+export const updatePaymentRecord = async (id, payload) => {
+  try {
+    return await putJSON(`${base_url}/payments/${id}`, payload);
+  } catch (error) {
+    console.error('updatePaymentRecord Error:', error);
     return { success: false, message: 'Network error' };
   }
 };
@@ -628,6 +647,15 @@ export const uploadShopLogo = async (base64Data, mimeType) => {
     return await postJSON(`${base_url}/shop-profile/logo`, { base64Data, mimeType });
   } catch (error) {
     console.error('uploadShopLogo Error:', error);
+    return { success: false, message: 'Network error' };
+  }
+};
+
+export const uploadShopSignature = async (base64Data, mimeType) => {
+  try {
+    return await postJSON(`${base_url}/shop-profile/signature`, { base64Data, mimeType });
+  } catch (error) {
+    console.error('uploadShopSignature Error:', error);
     return { success: false, message: 'Network error' };
   }
 };

@@ -27,7 +27,7 @@ export const generatePDF = async (data, type) => {
   let html = '';
 
   if (type === 'bill') {
-    const { billData, customer } = data;
+    const { billData, customer, logoSrc = '' } = data;
     const issueItems = billData.issueItems || [];
     const receiptItems = billData.receiptItems || [];
     const cashEntries = billData.cashEntries || [];
@@ -129,6 +129,7 @@ export const generatePDF = async (data, type) => {
   </div>
   <div class="banner">
     <div class="banner-mid">
+      ${logoSrc ? `<img src="${logoSrc}" alt="" style="width:42px;height:42px;object-fit:contain;border-radius:4px;flex-shrink:0;"/>` : ''}
       <span class="banner-name">MAYIL SILVER</span>
     </div>
     <div class="banner-tag">Pure Silver - Trusted Quality</div>

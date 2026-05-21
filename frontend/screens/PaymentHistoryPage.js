@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Alert, FlatList, Modal, StyleSheet,
-  Text, TextInput, TouchableOpacity, View,
+  ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Modal, Platform,
+  ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -11,7 +11,7 @@ import * as Sharing from 'expo-sharing';
 import { Asset } from 'expo-asset';
 import { WebView } from 'react-native-webview';
 import Header from '../components/Header';
-import { fetchPaymentHistoryFromDb, deletePaymentRecord } from '../services/api';
+import { fetchPaymentHistoryFromDb, deletePaymentRecord, updatePaymentRecord } from '../services/api';
 import { loadGstSettings } from '../services/gstSettings';
 import { loadShopProfile } from '../services/shopProfile';
 import { buildPaymentBillHtml, buildSummary } from '../utils/paymentUtils';
@@ -33,24 +33,23 @@ const loadLogoFallback = async () => {
   return _localLogoB64;
 };
 
-const loadLogoSrc = async (profile) => {
-  // logoUrl is always set when logo is uploaded via POST /api/shop-profile/logo
-  if (profile?.logoUrl) {
+// Logo is always the bundled Mayil Silver asset for consistency
+const loadLogoSrc = async () => loadLogoFallback();
+
+const loadSignatureSrc = async (profile) => {
+  const b64 = profile?.signatureBase64;
+  if (b64) return b64.startsWith('data:') ? b64 : `data:image/png;base64,${b64}`;
+  const url = profile?.signatureUrl;
+  if (url) {
     try {
-      const fullUrl = profile.logoUrl.startsWith('http')
-        ? profile.logoUrl
-        : `${BACKEND_URL}${profile.logoUrl}`;
-      const cacheFile = `${FileSystem.cacheDirectory}history_logo_pdf.png`;
+      const fullUrl = url.startsWith('http') ? url : `${BACKEND_URL}${url}`;
+      const cacheFile = `${FileSystem.cacheDirectory}history_sig_pdf.png`;
       const { uri: dl } = await FileSystem.downloadAsync(fullUrl, cacheFile);
       const base64 = await FileSystem.readAsStringAsync(dl, { encoding: 'base64' });
       if (base64) return `data:image/png;base64,${base64}`;
     } catch {}
   }
-  if (profile?.logoBase64) {
-    const b = profile.logoBase64;
-    if (b) return b.startsWith('data:') ? b : `data:image/png;base64,${b}`;
-  }
-  return loadLogoFallback();
+  return '';
 };
 
 // ── Combined HTML builder ─────────────────────────────────────
@@ -195,10 +194,17 @@ const PaymentHistoryPage = ({ navigation }) => {
   // Action busy
   const [actionBusy, setActionBusy] = useState('');
 
+  // Edit modal
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [editingRecord, setEditingRecord]       = useState(null);
+  const [editForm, setEditForm]                 = useState({});
+  const [editSaving, setEditSaving]             = useState(false);
+
   // Cached settings (loaded once)
-  const cachedProfile     = useRef(null);
-  const cachedGstSettings = useRef(null);
-  const cachedLogoSrc     = useRef('');
+  const cachedProfile      = useRef(null);
+  const cachedGstSettings  = useRef(null);
+  const cachedLogoSrc      = useRef('');
+  const cachedSignatureSrc = useRef('');
 
   // ── Data loading ──────────────────────────────────────────
   const refresh = useCallback(async () => {
@@ -221,9 +227,10 @@ const PaymentHistoryPage = ({ navigation }) => {
   // Preload profile + gstSettings once
   useEffect(() => {
     Promise.all([loadShopProfile(), loadGstSettings()]).then(async ([profile, settings]) => {
-      cachedProfile.current     = profile;
-      cachedGstSettings.current = settings;
-      cachedLogoSrc.current     = await loadLogoSrc(profile);
+      cachedProfile.current      = profile;
+      cachedGstSettings.current  = settings;
+      cachedLogoSrc.current      = await loadLogoSrc(profile);
+      cachedSignatureSrc.current = await loadSignatureSrc(profile);
     });
   }, []);
 
@@ -231,24 +238,27 @@ const PaymentHistoryPage = ({ navigation }) => {
   const getSettings = useCallback(async () => {
     if (cachedProfile.current && cachedGstSettings.current) {
       return {
-        profile: cachedProfile.current,
-        gstSettings: cachedGstSettings.current,
-        logoSrc: cachedLogoSrc.current,
+        profile:      cachedProfile.current,
+        gstSettings:  cachedGstSettings.current,
+        logoSrc:      cachedLogoSrc.current,
+        signatureSrc: cachedSignatureSrc.current,
       };
     }
     const [profile, gstSettings] = await Promise.all([loadShopProfile(), loadGstSettings()]);
-    const logoSrc = await loadLogoSrc(profile);
-    cachedProfile.current     = profile;
-    cachedGstSettings.current = gstSettings;
-    cachedLogoSrc.current     = logoSrc;
-    return { profile, gstSettings, logoSrc };
+    const [logoSrc, signatureSrc] = await Promise.all([loadLogoSrc(profile), loadSignatureSrc(profile)]);
+    cachedProfile.current      = profile;
+    cachedGstSettings.current  = gstSettings;
+    cachedLogoSrc.current      = logoSrc;
+    cachedSignatureSrc.current = signatureSrc;
+    return { profile, gstSettings, logoSrc, signatureSrc };
   }, []);
 
-  const getShopHtmlProfile = (profile) => ({
+  const getShopHtmlProfile = (profile, signatureSrc = '') => ({
     name:               profile?.shopName           || '',
     tagline:            profile?.tagline            || '',
     gst:                profile?.gstin              || '',
     phone:              profile?.phone              || '',
+    altPhone:           profile?.altPhone           || '',
     address:            profile?.address            || '',
     city:               profile?.city               || '',
     email:              profile?.email              || '',
@@ -256,6 +266,7 @@ const PaymentHistoryPage = ({ navigation }) => {
     stateCode:          profile?.stateCode          || '',
     financialYear:      profile?.financialYear      || '2025-2026',
     termsAndConditions: profile?.termsAndConditions || '',
+    signatureSrc,
   });
 
   // ── Filtering / derived state ─────────────────────────────
@@ -367,8 +378,8 @@ const PaymentHistoryPage = ({ navigation }) => {
     if (!records.length) return;
     setActionBusy(busyKey);
     try {
-      const { profile, gstSettings, logoSrc } = await getSettings();
-      const html = buildCombinedHtml(records, gstSettings, logoSrc, getShopHtmlProfile(profile), true);
+      const { profile, gstSettings, logoSrc, signatureSrc } = await getSettings();
+      const html = buildCombinedHtml(records, gstSettings, logoSrc, getShopHtmlProfile(profile, signatureSrc), true);
       setPreviewHtml(html);
       setPreviewCount(records.length);
       setPreviewVisible(true);
@@ -383,8 +394,8 @@ const PaymentHistoryPage = ({ navigation }) => {
     if (!records.length) return;
     setActionBusy(busyKey);
     try {
-      const { profile, gstSettings, logoSrc } = await getSettings();
-      const html = buildCombinedHtml(records, gstSettings, logoSrc, getShopHtmlProfile(profile), false);
+      const { profile, gstSettings, logoSrc, signatureSrc } = await getSettings();
+      const html = buildCombinedHtml(records, gstSettings, logoSrc, getShopHtmlProfile(profile, signatureSrc), false);
       await Print.printAsync({ html });
     } catch (e) {
       Alert.alert('Print Error', e?.message || 'Failed to print.');
@@ -397,8 +408,8 @@ const PaymentHistoryPage = ({ navigation }) => {
     if (!records.length) return;
     setActionBusy(busyKey);
     try {
-      const { profile, gstSettings, logoSrc } = await getSettings();
-      const html = buildCombinedHtml(records, gstSettings, logoSrc, getShopHtmlProfile(profile), false);
+      const { profile, gstSettings, logoSrc, signatureSrc } = await getSettings();
+      const html = buildCombinedHtml(records, gstSettings, logoSrc, getShopHtmlProfile(profile, signatureSrc), false);
       const { uri } = await Print.printToFileAsync({ html, base64: false });
       const ok = await Sharing.isAvailableAsync();
       if (ok) {
@@ -417,8 +428,8 @@ const PaymentHistoryPage = ({ navigation }) => {
     if (!records.length) return;
     setActionBusy(busyKey);
     try {
-      const { profile, gstSettings, logoSrc } = await getSettings();
-      const html = buildCombinedHtml(records, gstSettings, logoSrc, getShopHtmlProfile(profile), false);
+      const { profile, gstSettings, logoSrc, signatureSrc } = await getSettings();
+      const html = buildCombinedHtml(records, gstSettings, logoSrc, getShopHtmlProfile(profile, signatureSrc), false);
       const { uri } = await Print.printToFileAsync({ html, base64: false });
       const ok = await Sharing.isAvailableAsync();
       if (ok) {
@@ -450,6 +461,50 @@ const PaymentHistoryPage = ({ navigation }) => {
       },
     ]);
   }, [refresh]);
+
+  const handleEdit = useCallback((record) => {
+    setEditingRecord(record);
+    setEditForm({
+      customerName:  record.customerName  || '',
+      phone:         record.phone         || '',
+      itemName:      record.itemName      || '',
+      weight:        String(record.weight || ''),
+      ftRate:        String(record.ftRate || ''),
+      cash:          String(record.cash   || ''),
+      invoiceNumber: record.invoiceNumber || '',
+      status:        record.status        || 'draft',
+    });
+    setEditModalVisible(true);
+  }, []);
+
+  const handleSaveEdit = useCallback(async () => {
+    if (!editingRecord) return;
+    setEditSaving(true);
+    try {
+      const payload = {
+        customerName:  editForm.customerName.trim(),
+        phone:         editForm.phone.trim(),
+        itemName:      editForm.itemName.trim(),
+        weight:        parseFloat(editForm.weight) || 0,
+        ftRate:        parseFloat(editForm.ftRate) || 0,
+        cash:          parseFloat(editForm.cash)   || 0,
+        invoiceNumber: editForm.invoiceNumber.trim(),
+        status:        editForm.status,
+      };
+      const res = await updatePaymentRecord(editingRecord._id, payload);
+      if (res?.success) {
+        setEditModalVisible(false);
+        setEditingRecord(null);
+        refresh();
+      } else {
+        Alert.alert('Error', res?.message || 'Failed to update payment record.');
+      }
+    } catch (e) {
+      Alert.alert('Error', e?.message || 'Failed to update payment record.');
+    } finally {
+      setEditSaving(false);
+    }
+  }, [editingRecord, editForm, refresh]);
 
   // Bulk action wrappers
   const handleBulkView      = () => handleView(getSelectedRecords(), 'bulk-view');
@@ -570,6 +625,8 @@ const PaymentHistoryPage = ({ navigation }) => {
             onPress={() => handleWhatsApp([item], `wa-${id}`)} busy={isBusy('wa')} />
           <ActionBtn icon="download-outline" label="PDF"  color="#7C3AED" bgColor="#F5F3FF" borderColor="#DDD6FE"
             onPress={() => handleDownload([item], `dl-${id}`)} busy={isBusy('dl')} />
+          <ActionBtn icon="pencil-outline" label="Edit" color="#D97706" bgColor="#FFFBEB" borderColor="#FDE68A"
+            onPress={() => handleEdit(item)} busy={false} />
           <TouchableOpacity style={[styles.actionBtn, styles.deleteBtnCard]} onPress={() => handleDelete(item)}>
             <MaterialCommunityIcons name="trash-can-outline" size={14} color="#EF4444" />
             <Text style={[styles.actionBtnText, { color: '#EF4444' }]}>Del</Text>
@@ -837,6 +894,89 @@ const PaymentHistoryPage = ({ navigation }) => {
             </View>
           </View>
         </View>
+      </Modal>
+
+      {/* Edit payment record modal */}
+      <Modal
+        visible={editModalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setEditModalVisible(false)}
+      >
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <View style={styles.modalOverlay}>
+            <View style={styles.editCard}>
+              <View style={styles.editHeader}>
+                <Text style={styles.editTitle}>Edit Payment Record</Text>
+                <TouchableOpacity onPress={() => setEditModalVisible(false)}>
+                  <MaterialCommunityIcons name="close" size={22} color="#64748B" />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                {[
+                  { key: 'customerName',  label: 'Customer Name', placeholder: 'Customer name',  keyboard: 'default' },
+                  { key: 'phone',         label: 'Phone',         placeholder: 'Phone number',   keyboard: 'phone-pad' },
+                  { key: 'invoiceNumber', label: 'Invoice No',    placeholder: 'Invoice number', keyboard: 'default' },
+                  { key: 'itemName',      label: 'Item',          placeholder: 'Item name',      keyboard: 'default' },
+                  { key: 'weight',        label: 'Weight (g)',    placeholder: '0',              keyboard: 'numeric' },
+                  { key: 'ftRate',        label: 'Silver Rate',   placeholder: '0',              keyboard: 'numeric' },
+                  { key: 'cash',          label: 'Amount',        placeholder: '0',              keyboard: 'numeric' },
+                ].map(({ key, label, placeholder, keyboard }) => (
+                  <View key={key} style={styles.editField}>
+                    <Text style={styles.editLabel}>{label}</Text>
+                    <TextInput
+                      style={styles.editInput}
+                      value={editForm[key] || ''}
+                      onChangeText={(v) => setEditForm((f) => ({ ...f, [key]: v }))}
+                      placeholder={placeholder}
+                      placeholderTextColor="#94A3B8"
+                      keyboardType={keyboard}
+                    />
+                  </View>
+                ))}
+
+                <View style={styles.editField}>
+                  <Text style={styles.editLabel}>Status</Text>
+                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                    {['draft', 'final'].map((s) => (
+                      <TouchableOpacity
+                        key={s}
+                        style={[styles.statusPickerBtn, editForm.status === s && styles.statusPickerActive]}
+                        onPress={() => setEditForm((f) => ({ ...f, status: s }))}
+                      >
+                        <Text style={[styles.statusPickerText, editForm.status === s && styles.statusPickerTextActive]}>
+                          {s.toUpperCase()}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              </ScrollView>
+
+              <View style={styles.editFooter}>
+                <TouchableOpacity
+                  style={styles.editCancelBtn}
+                  onPress={() => setEditModalVisible(false)}
+                  disabled={editSaving}
+                >
+                  <Text style={styles.editCancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.editSaveBtn, editSaving && { opacity: 0.6 }]}
+                  onPress={handleSaveEdit}
+                  disabled={editSaving}
+                >
+                  {editSaving ? (
+                    <ActivityIndicator color="#FFF" size="small" />
+                  ) : (
+                    <Text style={styles.editSaveText}>Save Changes</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* In-app bill preview modal */}
@@ -1125,6 +1265,46 @@ const styles = StyleSheet.create({
   previewBarBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 4 },
   previewBarDivider: { width: 1, backgroundColor: 'rgba(255,255,255,0.15)', marginVertical: 4 },
   previewBarBtnText: { fontSize: moderateScale(13), fontWeight: '700' },
+
+  // Edit modal
+  editCard: {
+    backgroundColor: '#FFF', borderRadius: 20, padding: spacing.lg,
+    maxHeight: '92%', borderWidth: 1, borderColor: '#E5E7EB',
+  },
+  editHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginBottom: spacing.md, paddingBottom: 14,
+    borderBottomWidth: 1, borderBottomColor: '#F1F5F9',
+  },
+  editTitle: { fontSize: moderateScale(16), fontWeight: '800', color: '#0F172A' },
+  editField: { marginBottom: 14 },
+  editLabel: { fontSize: moderateScale(11), fontWeight: '700', color: '#64748B', marginBottom: 6 },
+  editInput: {
+    minHeight: 46, borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 10,
+    paddingHorizontal: 12, fontSize: moderateScale(13), color: '#1C2B3A',
+    backgroundColor: '#F8FAFC',
+  },
+  editFooter: {
+    flexDirection: 'row', gap: 12, marginTop: 20,
+    paddingTop: 14, borderTopWidth: 1, borderTopColor: '#F1F5F9',
+  },
+  editCancelBtn: {
+    flex: 1, minHeight: 46, borderRadius: 12, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: '#E2E8F0',
+  },
+  editCancelText: { fontSize: moderateScale(14), fontWeight: '700', color: '#475569' },
+  editSaveBtn: {
+    flex: 2, minHeight: 46, borderRadius: 12, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: '#1C2B3A',
+  },
+  editSaveText: { fontSize: moderateScale(14), fontWeight: '800', color: '#FFF' },
+  statusPickerBtn: {
+    flex: 1, minHeight: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0',
+  },
+  statusPickerActive: { backgroundColor: '#1C2B3A', borderColor: '#1C2B3A' },
+  statusPickerText: { fontSize: moderateScale(12), fontWeight: '700', color: '#475569' },
+  statusPickerTextActive: { color: '#FFF' },
 });
 
 export default PaymentHistoryPage;

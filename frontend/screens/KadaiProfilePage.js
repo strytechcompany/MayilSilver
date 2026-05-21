@@ -18,7 +18,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import Header from '../components/Header';
 import { loadShopProfile, saveShopProfile, DEFAULT_SHOP_PROFILE } from '../services/shopProfile';
-import { uploadShopLogo } from '../services/api';
+import { uploadShopSignature } from '../services/api';
 import { horizontalPadding, moderateScale, spacing } from '../utils/responsive';
 
 // ── Theme (matches GstBillpreview premium silver) ─────────────
@@ -37,6 +37,7 @@ const C = {
 };
 
 const BANNER = C.dark;
+const LOGO_ASSET = require('../assets/logo.png');
 
 // ── Live Header Preview ───────────────────────────────────────
 const HeaderPreview = ({ form }) => (
@@ -55,21 +56,11 @@ const HeaderPreview = ({ form }) => (
             GST IN:- {form.gstin || 'GSTIN NUMBER'}
           </Text>
           <Text style={preview.bannerSmall}>
-            {form.phone || 'PHONE'}
+            {form.phone || 'PHONE'}{form.altPhone ? ` / ${form.altPhone}` : ''}
           </Text>
         </View>
         <View style={preview.bannerCenter}>
-          {form.logoBase64 ? (
-            <Image
-              source={{ uri: form.logoBase64 }}
-              style={preview.logo}
-              resizeMode="contain"
-            />
-          ) : (
-            <View style={preview.logoPlaceholder}>
-              <MaterialCommunityIcons name="image-outline" size={18} color={C.silver} />
-            </View>
-          )}
+          <Image source={LOGO_ASSET} style={preview.logo} resizeMode="contain" />
           <Text style={preview.shopName} numberOfLines={1}>
             {form.shopName || 'SHOP NAME'}
           </Text>
@@ -108,34 +99,36 @@ const KadaiProfilePage = ({ navigation }) => {
     setForm((prev) => ({ ...prev, [key]: value }));
   }, []);
 
-  const pickLogo = async () => {
+  const pickSignature = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission Required', 'Please allow photo library access to upload a logo.');
+      Alert.alert('Permission Required', 'Please allow photo library access to upload the signature.');
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.45,
+      aspect: [3, 1],
+      quality: 0.7,
       base64: true,
     });
     if (!result.canceled && result.assets?.[0]?.base64) {
       const { base64, mimeType } = result.assets[0];
-      const mime = mimeType || 'image/jpeg';
-      set('logoBase64', `data:${mime};base64,${base64}`);
-      // Upload to backend to get a hosted URL
+      const mime = mimeType || 'image/png';
+      set('signatureBase64', `data:${mime};base64,${base64}`);
       try {
-        const uploadResult = await uploadShopLogo(base64, mime);
-        if (uploadResult?.success && uploadResult.logoUrl) {
-          set('logoUrl', uploadResult.logoUrl);
+        const uploadResult = await uploadShopSignature(base64, mime);
+        if (uploadResult?.success && uploadResult.signatureUrl) {
+          set('signatureUrl', uploadResult.signatureUrl);
         }
       } catch {}
     }
   };
 
-  const removeLogo = () => set('logoBase64', '');
+  const removeSignature = () => {
+    set('signatureBase64', '');
+    set('signatureUrl', '');
+  };
 
   const handleSave = async () => {
     if (!form.shopName.trim()) {
@@ -190,30 +183,42 @@ const KadaiProfilePage = ({ navigation }) => {
 
           {/* ── Section: Shop Branding ── */}
           <SectionCard title="Shop Branding" icon="store-outline">
-            {/* Logo Upload */}
+            {/* Fixed Mayil Silver Logo */}
             <Text style={styles.fieldLabel}>Shop Logo</Text>
             <View style={styles.logoRow}>
-              {form.logoBase64 ? (
+              <Image source={LOGO_ASSET} style={styles.logoPreview} resizeMode="contain" />
+              <View style={styles.logoBtns}>
+                <View style={styles.fixedLogoNote}>
+                  <MaterialCommunityIcons name="lock-outline" size={13} color={C.textMid} />
+                  <Text style={styles.fixedLogoText}>Mayil Silver logo (fixed)</Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Authorized Signature Upload */}
+            <Text style={styles.fieldLabel}>Authorized Signature</Text>
+            <View style={styles.logoRow}>
+              {form.signatureBase64 ? (
                 <Image
-                  source={{ uri: form.logoBase64 }}
-                  style={styles.logoPreview}
+                  source={{ uri: form.signatureBase64 }}
+                  style={styles.signaturePreview}
                   resizeMode="contain"
                 />
               ) : (
-                <View style={styles.logoEmpty}>
-                  <MaterialCommunityIcons name="image-plus" size={28} color={C.silver} />
-                  <Text style={styles.logoEmptyText}>No logo</Text>
+                <View style={styles.signatureEmpty}>
+                  <MaterialCommunityIcons name="draw" size={22} color={C.silver} />
+                  <Text style={styles.logoEmptyText}>No signature</Text>
                 </View>
               )}
               <View style={styles.logoBtns}>
-                <TouchableOpacity style={styles.uploadBtn} onPress={pickLogo} activeOpacity={0.8}>
+                <TouchableOpacity style={styles.uploadBtn} onPress={pickSignature} activeOpacity={0.8}>
                   <MaterialCommunityIcons name="upload" size={14} color={C.white} />
                   <Text style={styles.uploadBtnText}>
-                    {form.logoBase64 ? 'Change Logo' : 'Upload Logo'}
+                    {form.signatureBase64 ? 'Change Signature' : 'Upload Signature'}
                   </Text>
                 </TouchableOpacity>
-                {form.logoBase64 ? (
-                  <TouchableOpacity style={styles.removeBtn} onPress={removeLogo} activeOpacity={0.8}>
+                {form.signatureBase64 ? (
+                  <TouchableOpacity style={styles.removeBtn} onPress={removeSignature} activeOpacity={0.8}>
                     <MaterialCommunityIcons name="delete-outline" size={14} color="#DC2626" />
                     <Text style={styles.removeBtnText}>Remove</Text>
                   </TouchableOpacity>
@@ -253,10 +258,10 @@ const KadaiProfilePage = ({ navigation }) => {
           {/* ── Section: Invoice Content ── */}
           <SectionCard title="Invoice Content" icon="file-document-edit-outline">
             <Field
-              label="Terms & Conditions"
+              label="Declaration"
               value={form.termsAndConditions}
               onChangeText={(v) => set('termsAndConditions', v)}
-              placeholder="Enter your invoice terms & conditions…"
+              placeholder="Enter your invoice declaration…"
               multiline
               numberOfLines={4}
             />
@@ -468,6 +473,38 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   logoEmptyText: { fontSize: moderateScale(8), color: C.textLight },
+  fixedLogoNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    backgroundColor: C.silverBg,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  fixedLogoText: { fontSize: moderateScale(11), color: C.textMid, fontWeight: '600' },
+  signaturePreview: {
+    width: 130,
+    height: 52,
+    borderRadius: 4,
+    backgroundColor: C.silverBg,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  signatureEmpty: {
+    width: 130,
+    height: 52,
+    borderRadius: 4,
+    backgroundColor: C.silverBg,
+    borderWidth: 1.5,
+    borderColor: C.border,
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+  },
   logoBtns: { gap: 8 },
   uploadBtn: {
     flexDirection: 'row',

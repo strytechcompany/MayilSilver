@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { fetchAllCustomers, createCustomer, updateCustomer } from '../services/api';
+import { fetchAllCustomers, createCustomer, updateCustomer, deleteCustomer } from '../services/api';
 import Header from '../components/Header';
 import Card from '../components/Card';
 import InputField from '../components/InputField';
@@ -133,6 +133,28 @@ const CustomerDataListPage = ({ navigation }) => {
     resetCustomerForm();
     setShowForm(true);
   }, [resetCustomerForm]);
+
+  const handleDeleteCustomer = useCallback((customer) => {
+    Alert.alert(
+      'Delete Customer',
+      `Delete "${customer.customerName}"? This will remove the customer from MongoDB.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            const res = await deleteCustomer(customer._id);
+            if (res?.success) {
+              loadCustomers();
+            } else {
+              Alert.alert('Error', res?.message || 'Failed to delete customer.');
+            }
+          },
+        },
+      ]
+    );
+  }, []);
 
   const openEditForm = useCallback((customer) => {
     setEditingCustomerId(customer._id || '');
@@ -336,7 +358,7 @@ const CustomerDataListPage = ({ navigation }) => {
                       <View style={styles.cardActions}>
                         <TouchableOpacity
                           style={styles.actionBtn}
-                          onPress={() => navigation.navigate('BillHistory', { customer })}
+                          onPress={() => navigation.navigate('CustomerBillHistory', { customer })}
                         >
                           <MaterialCommunityIcons name="receipt" size={16} color="#4B5563" />
                           <Text style={styles.actionBtnText}>History</Text>
@@ -346,8 +368,8 @@ const CustomerDataListPage = ({ navigation }) => {
                           style={styles.actionBtn}
                           onPress={() => openEditForm(customer)}
                         >
-                          <MaterialCommunityIcons name="pencil" size={16} color="#4B5563" />
-                          <Text style={styles.actionBtnText}>Edit</Text>
+                          <MaterialCommunityIcons name="pencil" size={16} color="#2563EB" />
+                          <Text style={[styles.actionBtnText, { color: '#2563EB' }]}>Edit</Text>
                         </TouchableOpacity>
                         <View style={styles.divider} />
                         <TouchableOpacity
@@ -356,6 +378,14 @@ const CustomerDataListPage = ({ navigation }) => {
                         >
                           <MaterialCommunityIcons name="file-chart" size={16} color="#4B5563" />
                           <Text style={styles.actionBtnText}>Statement</Text>
+                        </TouchableOpacity>
+                        <View style={styles.divider} />
+                        <TouchableOpacity
+                          style={styles.actionBtn}
+                          onPress={() => handleDeleteCustomer(customer)}
+                        >
+                          <MaterialCommunityIcons name="trash-can-outline" size={16} color="#DC2626" />
+                          <Text style={[styles.actionBtnText, { color: '#DC2626' }]}>Delete</Text>
                         </TouchableOpacity>
                       </View>
                     </Card>

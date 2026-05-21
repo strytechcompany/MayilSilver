@@ -16,6 +16,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
+import { Asset } from 'expo-asset';
 import QRCode from 'qrcode';
 import Header from '../components/Header';
 import { fetchGstCustomerById, updateGstCustomer, uploadInvoicePdf } from '../services/api';
@@ -28,6 +29,18 @@ import { horizontalPadding, moderateScale, spacing } from '../utils/responsive';
 
 const LOGO_ASSET = require('../assets/logo.png');
 const backend_url = base_url.replace(/\/api\/?$/, '');
+
+// Module-level cache so the local fallback is read from disk only once
+let _localLogoB64 = '';
+const loadLogoFallback = async () => {
+  if (_localLogoB64) return _localLogoB64;
+  try {
+    const [asset] = await Asset.loadAsync(LOGO_ASSET);
+    const b64 = await FileSystem.readAsStringAsync(asset.localUri ?? asset.uri, { encoding: 'base64' });
+    _localLogoB64 = `data:image/png;base64,${b64}`;
+  } catch {}
+  return _localLogoB64;
+};
 
 // ── Premium Silver Jewellery Theme ────────────────────────────────────────────
 const C = {
@@ -219,32 +232,10 @@ const GstBillpreview = ({ navigation, route }) => {
     setEditableInvoiceNumber(transaction?.invoiceNumber || '');
   }, [transaction?.invoiceNumber]);
 
-  // Load logo from DB (base64 first, then backend URL, never local asset)
+  // Load logo — always use bundled Mayil Silver logo for consistency
   useEffect(() => {
-    const loadLogo = async () => {
-      const b64 = shopProfile?.logoBase64;
-      const url = shopProfile?.logoUrl;
-
-      if (b64) {
-        setLogoDataUri(b64.startsWith('data:') ? b64 : `data:image/png;base64,${b64}`);
-        return;
-      }
-      if (url) {
-        try {
-          const fullUrl = url.startsWith('http') ? url : `${backend_url}${url}`;
-          const cacheFile = `${FileSystem.cacheDirectory}gst_logo_pdf.png`;
-          const { uri: dl } = await FileSystem.downloadAsync(fullUrl, cacheFile);
-          const base64 = await FileSystem.readAsStringAsync(dl, { encoding: 'base64' });
-          setLogoDataUri(`data:image/png;base64,${base64}`);
-        } catch {
-          setLogoDataUri('');
-        }
-        return;
-      }
-      setLogoDataUri('');
-    };
-    loadLogo();
-  }, [shopProfile]);
+    loadLogoFallback().then(setLogoDataUri).catch(() => setLogoDataUri(''));
+  }, []);
 
   const loadTransaction = useCallback(async () => {
     if (!transactionId) return;
@@ -289,6 +280,7 @@ const GstBillpreview = ({ navigation, route }) => {
     tagline:            shopProfile?.tagline            || '',
     gst:                shopProfile?.gstin              || '',
     phone:              shopProfile?.phone              || '',
+    altPhone:           shopProfile?.altPhone           || '',
     address:            shopProfile?.address            || '',
     city:               shopProfile?.city               || '',
     stateName:          shopProfile?.stateName          || '',
@@ -301,6 +293,7 @@ const GstBillpreview = ({ navigation, route }) => {
     ifscCode:           shopProfile?.ifscCode           || '',
     branch:             shopProfile?.branch             || '',
     termsAndConditions: shopProfile?.termsAndConditions || '',
+    signatureSrc:       '',
   }), [shopProfile]);
 
   const runPrintAction = async (type) => {
@@ -328,7 +321,21 @@ const GstBillpreview = ({ navigation, route }) => {
         setQrSvg(workingQrSvg);
       }
 
-      const html = buildInvoiceHtml(workingTransaction, invoiceSummary, gstSettings, logoDataUri, profile, workingQrSvg);
+      const effectiveLogo = logoDataUri || await loadLogoFallback();
+
+      let signatureSrc = '';
+      const sigUrl = shopProfile?.signatureUrl;
+      if (sigUrl) {
+        try {
+          const fullSigUrl = sigUrl.startsWith('http') ? sigUrl : `${backend_url}${sigUrl}`;
+          const sigCacheFile = `${FileSystem.cacheDirectory}gst_sig_pdf.png`;
+          const { uri: sigDlUri } = await FileSystem.downloadAsync(fullSigUrl, sigCacheFile);
+          const sigBase64 = await FileSystem.readAsStringAsync(sigDlUri, { encoding: 'base64' });
+          if (sigBase64) signatureSrc = `data:image/png;base64,${sigBase64}`;
+        } catch {}
+      }
+
+      const html = buildInvoiceHtml(workingTransaction, invoiceSummary, gstSettings, effectiveLogo, { ...profile, signatureSrc }, workingQrSvg);
       if (type === 'print') {
         await Print.printAsync({ html });
       } else {
@@ -450,7 +457,9 @@ const GstBillpreview = ({ navigation, route }) => {
           <View style={styles.banner}>
             <View style={styles.bannerTopRow}>
               <Text style={styles.bannerGst}>GST IN:- {profile.gst}</Text>
-              <Text style={styles.bannerPhone}>{profile.phone}</Text>
+              <Text style={styles.bannerPhone}>
+                {profile.phone}{profile.altPhone ? ` / ${profile.altPhone}` : ''}
+              </Text>
             </View>
             <View style={styles.bannerLogoRow}>
               <Image
@@ -571,10 +580,10 @@ const GstBillpreview = ({ navigation, route }) => {
             </View>
           ) : null}
 
-          {/* 10. Terms & Conditions + Bank Details */}
+          {/* 10. Declaration + Bank Details */}
           <View style={styles.footerSection}>
             <View style={styles.tcBox}>
-              <Text style={styles.sectionHeading}>Terms & Conditions</Text>
+              <Text style={styles.sectionHeading}>Declaration</Text>
               <Text style={styles.tcLine}>We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.</Text>
               <Text style={styles.tcLine}>Interest@15% per annum will be charged for the bills not paid within 15 days.</Text>
               <Text style={styles.tcLine}>Goods once sold will not be taken back.</Text>
@@ -594,12 +603,18 @@ const GstBillpreview = ({ navigation, route }) => {
             </View>
           </View>
 
-          {/* 11. Signature Section */}
-          <View style={styles.sigSection}>
-            <View style={styles.sigLeft}>
-              <Text style={styles.sigLabel}>Customer Signature</Text>
-            </View>
-            <View style={styles.sigRight}>
+          {/* 11. Signature Section — Authorised Signatory only */}
+          <View style={[styles.sigSection, { justifyContent: 'flex-end' }]}>
+            <View style={[styles.sigRight, { flex: 1, borderLeftWidth: 0, alignItems: 'flex-end', paddingRight: 16 }]}>
+              {shopProfile?.signatureUrl ? (
+                <Image
+                  source={{ uri: shopProfile.signatureUrl.startsWith('http') ? shopProfile.signatureUrl : `${backend_url}${shopProfile.signatureUrl}` }}
+                  style={styles.sigImage}
+                  resizeMode="contain"
+                />
+              ) : (
+                <View style={styles.sigImagePlaceholder} />
+              )}
               <Text style={styles.sigCompany}>for {profile.name}</Text>
               <Text style={styles.sigLabel}>Authorised Signatory</Text>
             </View>
@@ -834,7 +849,7 @@ const buildInvoiceHtml = (transaction, summary, settings, logoSrc = '', profile 
   <div class="banner">
     <div class="banner-top">
       <span>GST IN:- ${escapeHtml(profile.gst)}</span>
-      <span>${escapeHtml(profile.phone)}</span>
+      <span>${escapeHtml(profile.phone)}${profile.altPhone ? ` / ${escapeHtml(profile.altPhone)}` : ''}</span>
     </div>
     <div class="banner-mid">
       ${logoSrc ? `<img src="${logoSrc}" alt="Logo" class="banner-logo" />` : ''}
@@ -901,11 +916,13 @@ const buildInvoiceHtml = (transaction, summary, settings, logoSrc = '', profile 
 
   <div class="footer-grid">
     <div class="footer-box left">
-      <div class="sec-head">Terms &amp; Conditions</div>
-      <div class="tc-line">We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.</div>
+      <div class="sec-head">Declaration</div>
+      ${profile.termsAndConditions
+        ? profile.termsAndConditions.split('\n').filter(l => l.trim()).map(l => `<div class="tc-line">${escapeHtml(l)}</div>`).join('')
+        : `<div class="tc-line">We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.</div>
       <div class="tc-line">Interest@15% per annum will be charged for the bills not paid within 15 days.</div>
       <div class="tc-line">Goods once sold will not be taken back.</div>
-      <div class="tc-line">No E way bill is required for goods covered under this invoice as per SR NO.150/151 of CGST Rule 138(14).</div>
+      <div class="tc-line">No E way bill is required for goods covered under this invoice as per SR NO.150/151 of CGST Rule 138(14).</div>`}
     </div>
     <div class="footer-box">
       <div class="sec-head">Company's Bank Details</div>
@@ -917,11 +934,9 @@ const buildInvoiceHtml = (transaction, summary, settings, logoSrc = '', profile 
     </div>
   </div>
 
-  <div class="sig-grid">
-    <div class="sig-box left">
-      <span class="sig-lbl">Customer Signature</span>
-    </div>
-    <div class="sig-box right">
+  <div class="sig-grid" style="grid-template-columns:1fr;">
+    <div class="sig-box" style="align-items:flex-end; padding-right:24px; padding-bottom:12px;">
+      ${profile.signatureSrc ? `<img src="${profile.signatureSrc}" alt="" style="height:56px;max-width:180px;object-fit:contain;margin-bottom:6px;display:block;"/>` : '<div style="height:56px;"></div>'}
       <span class="sig-co">for ${escapeHtml(profile.name)}</span>
       <span class="sig-lbl">Authorised Signatory</span>
     </div>
@@ -1326,6 +1341,8 @@ const styles = StyleSheet.create({
   },
   sigCompany: { fontSize: 10, color: C.textLight, marginBottom: 2, textAlign: 'center' },
   sigLabel: { fontSize: 12, fontWeight: '800', color: C.dark, letterSpacing: 0.3, textAlign: 'center' },
+  sigImage: { height: 50, width: 160, marginBottom: 6 },
+  sigImagePlaceholder: { height: 50, width: 160, marginBottom: 6 },
 
   // 12. Bottom bar — dark charcoal footer
   bottomBar: {

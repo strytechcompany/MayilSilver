@@ -14,6 +14,8 @@ const DOCUMENTS_DIR = path.join(__dirname, 'public', 'uploads', 'documents');
 if (!fs.existsSync(DOCUMENTS_DIR)) fs.mkdirSync(DOCUMENTS_DIR, { recursive: true });
 const LOGO_DIR = path.join(__dirname, 'public', 'uploads', 'logo');
 if (!fs.existsSync(LOGO_DIR)) fs.mkdirSync(LOGO_DIR, { recursive: true });
+const SIGNATURE_DIR = path.join(__dirname, 'public', 'uploads', 'signature');
+if (!fs.existsSync(SIGNATURE_DIR)) fs.mkdirSync(SIGNATURE_DIR, { recursive: true });
 
 const app = express();
 const ADMIN_EMAIL = 'mayilsilver@gmail.com';
@@ -37,6 +39,7 @@ app.use(express.json({ limit: '25mb' })); // increased for document base64 uploa
 app.use('/invoices', express.static(INVOICES_DIR)); // publicly serve generated invoice PDFs
 app.use('/uploads/documents', express.static(DOCUMENTS_DIR));
 app.use('/uploads/logo', express.static(LOGO_DIR));
+app.use('/uploads/signature', express.static(SIGNATURE_DIR));
 
 // ── API Router (all /api/* routes) ───────────────────────────
 const router = express.Router();
@@ -198,6 +201,8 @@ const ShopProfileSchema = new mongoose.Schema({
   tagline:            { type: String, default: '' },
   logoBase64:         { type: String, default: '' },
   logoUrl:            { type: String, default: '' },
+  signatureBase64:    { type: String, default: '' },
+  signatureUrl:       { type: String, default: '' },
   bankName:           { type: String, default: '' },
   accountNumber:      { type: String, default: '' },
   ifscCode:           { type: String, default: '' },
@@ -805,6 +810,7 @@ router.put('/shop-profile', async (req, res) => {
     const allowed = [
       'shopName', 'gstin', 'phone', 'altPhone', 'address', 'city',
       'stateName', 'stateCode', 'email', 'website', 'tagline', 'logoBase64', 'logoUrl',
+      'signatureBase64', 'signatureUrl',
       'bankName', 'accountNumber', 'ifscCode', 'branch',
       'termsAndConditions', 'footerNotes', 'financialYear'
     ];
@@ -849,6 +855,37 @@ router.post('/shop-profile/logo', async (req, res) => {
     );
 
     res.json({ success: true, logoUrl });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// POST /api/shop-profile/signature — upload signature file, store URL in ShopProfile
+router.post('/shop-profile/signature', async (req, res) => {
+  try {
+    const { base64Data, mimeType } = req.body;
+    if (!base64Data) return res.status(400).json({ success: false, message: 'No image data provided' });
+
+    const ext = (mimeType || '').includes('png') ? '.png' : '.jpg';
+    const safeName = `signature_${Date.now()}${ext}`;
+    const absolutePath = path.join(SIGNATURE_DIR, safeName);
+
+    // Remove old signature files to keep storage clean
+    try {
+      const existing = fs.readdirSync(SIGNATURE_DIR);
+      existing.forEach((f) => { try { fs.unlinkSync(path.join(SIGNATURE_DIR, f)); } catch {} });
+    } catch {}
+
+    fs.writeFileSync(absolutePath, base64Data, 'base64');
+    const signatureUrl = `/uploads/signature/${safeName}`;
+
+    await ShopProfile.findOneAndUpdate(
+      { _singleton: 'profile' },
+      { $set: { signatureUrl } },
+      { upsert: true }
+    );
+
+    res.json({ success: true, signatureUrl });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

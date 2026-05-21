@@ -306,7 +306,7 @@ export const buildPaymentBillHtml = (tx, summary, settings, logoSrc = '', profil
   <div class="banner">
     <div class="banner-top">
       <span>GST IN:- ${esc(profile.gst || '')}</span>
-      <span>${esc(profile.phone || '')}</span>
+      <span>${esc(profile.phone || '')}${profile.altPhone ? ` / ${esc(profile.altPhone)}` : ''}</span>
     </div>
     <div class="banner-mid">
       ${logoSrc ? `<img src="${logoSrc}" alt="Logo" class="banner-logo"/>` : ''}
@@ -372,7 +372,7 @@ export const buildPaymentBillHtml = (tx, summary, settings, logoSrc = '', profil
 
   <div class="footer-grid">
     <div class="footer-box left">
-      <div class="sec-head">Terms &amp; Conditions</div>
+      <div class="sec-head">Declaration</div>
       ${profile.termsAndConditions
         ? profile.termsAndConditions.split('\n').filter(l => l.trim()).map(l => `<div class="tc-line">${esc(l)}</div>`).join('')
         : `<div class="tc-line">We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.</div>
@@ -390,11 +390,9 @@ export const buildPaymentBillHtml = (tx, summary, settings, logoSrc = '', profil
     </div>
   </div>
 
-  <div class="sig-grid">
-    <div class="sig-box left">
-      <span class="sig-lbl">Customer Signature</span>
-    </div>
-    <div class="sig-box">
+  <div class="sig-grid" style="grid-template-columns:1fr;">
+    <div class="sig-box" style="align-items:flex-end; padding-right:24px; padding-bottom:12px;">
+      ${profile.signatureSrc ? `<img src="${profile.signatureSrc}" alt="" style="height:56px;max-width:180px;object-fit:contain;margin-bottom:6px;display:block;"/>` : '<div style="height:56px;"></div>'}
       <span class="sig-co">for ${esc(profile.name || '')}</span>
       <span class="sig-lbl">Authorised Signatory</span>
     </div>

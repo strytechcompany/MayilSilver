@@ -60,7 +60,8 @@ const getRemoteUrl = (fileUrl = '') => {
   return `${backend_url}${fileUrl.startsWith('/') ? fileUrl : `/${fileUrl}`}`;
 };
 
-const getDocumentExtension = (doc = {}) => {
+const getDocumentExtension = (doc) => {
+  if (!doc) return '';
   const fromName = String(doc.fileName || '').split('.').pop()?.toLowerCase();
   if (fromName && fromName !== String(doc.fileName || '').toLowerCase()) return fromName;
   const mime = String(doc.mimeType || '').toLowerCase();
@@ -70,12 +71,14 @@ const getDocumentExtension = (doc = {}) => {
   return '';
 };
 
-const isPdfDocument = (doc = {}) => {
+const isPdfDocument = (doc) => {
+  if (!doc) return false;
   const extension = getDocumentExtension(doc);
   return String(doc.mimeType || '').toLowerCase().includes('pdf') || extension === 'pdf';
 };
 
-const isImageDocument = (doc = {}) => {
+const isImageDocument = (doc) => {
+  if (!doc) return false;
   const extension = getDocumentExtension(doc);
   const mime = String(doc.mimeType || '').toLowerCase();
   return mime.startsWith('image/') || ['jpg', 'jpeg', 'png'].includes(extension);
