@@ -7,47 +7,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Sharing from 'expo-sharing';
-import * as FileSystem from 'expo-file-system/legacy';
-import { Asset } from 'expo-asset';
 import { generatePDF } from '../utils/pdfGenerator';
 import { AuthContext } from '../context/AuthContext';
 import { loadShopProfile } from '../services/shopProfile';
-import { base_url } from '../config';
+import { getLogoDataUri } from '../utils/paymentUtils';
 import { horizontalPadding, moderateScale, spacing } from '../utils/responsive';
 
 const LOGO_ASSET = require('../assets/logo.png');
-const BACKEND_URL = base_url.replace(/\/api\/?$/, '');
-
-// Module-level cache so the local fallback is read from disk only once
-let _localLogoB64 = '';
-const loadLogoFallback = async () => {
-  if (_localLogoB64) return _localLogoB64;
-  try {
-    const [asset] = await Asset.loadAsync(LOGO_ASSET);
-    const b64 = await FileSystem.readAsStringAsync(asset.localUri ?? asset.uri, { encoding: 'base64' });
-    _localLogoB64 = `data:image/png;base64,${b64}`;
-  } catch {}
-  return _localLogoB64;
-};
-
-const loadLogoDataUri = async (profile) => {
-  if (profile?.logoBase64) {
-    const b = profile.logoBase64;
-    return b.startsWith('data:') ? b : `data:image/png;base64,${b}`;
-  }
-  if (profile?.logoUrl) {
-    try {
-      const fullUrl = profile.logoUrl.startsWith('http')
-        ? profile.logoUrl
-        : `${BACKEND_URL}${profile.logoUrl}`;
-      const cached = `${FileSystem.cacheDirectory}bill_logo.png`;
-      const { uri: dl } = await FileSystem.downloadAsync(fullUrl, cached);
-      const b64 = await FileSystem.readAsStringAsync(dl, { encoding: 'base64' });
-      return `data:image/png;base64,${b64}`;
-    } catch {}
-  }
-  return loadLogoFallback();
-};
 
 // ── Premium Silver Theme (mirrors GstBillpreview) ─────────────────────────────
 const C = {
@@ -127,7 +93,7 @@ const BillPreviewPage = ({ navigation, route }) => {
   const [logoDataUri, setLogoDataUri] = useState('');
   useEffect(() => {
     loadShopProfile()
-      .then((profile) => loadLogoDataUri(profile))
+      .then((profile) => getLogoDataUri(profile))
       .then(setLogoDataUri);
   }, []);
 

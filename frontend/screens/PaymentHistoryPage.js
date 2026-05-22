@@ -8,33 +8,17 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Print from 'expo-print';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
-import { Asset } from 'expo-asset';
 import { WebView } from 'react-native-webview';
 import Header from '../components/Header';
 import { fetchPaymentHistoryFromDb, deletePaymentRecord, updatePaymentRecord } from '../services/api';
 import { loadGstSettings } from '../services/gstSettings';
 import { loadShopProfile } from '../services/shopProfile';
-import { buildPaymentBillHtml, buildSummary } from '../utils/paymentUtils';
+import { buildPaymentBillHtml, buildSummary, getLogoDataUri } from '../utils/paymentUtils';
 import { base_url } from '../config';
 import { horizontalPadding, moderateScale, spacing } from '../utils/responsive';
 
 // ── Logo helper ───────────────────────────────────────────────
 const BACKEND_URL = base_url.replace(/\/api\/?$/, '');
-const LOGO_ASSET = require('../assets/logo.png');
-
-let _localLogoB64 = '';
-const loadLogoFallback = async () => {
-  if (_localLogoB64) return _localLogoB64;
-  try {
-    const [asset] = await Asset.loadAsync(LOGO_ASSET);
-    const b64 = await FileSystem.readAsStringAsync(asset.localUri ?? asset.uri, { encoding: 'base64' });
-    _localLogoB64 = `data:image/png;base64,${b64}`;
-  } catch {}
-  return _localLogoB64;
-};
-
-// Logo is always the bundled Mayil Silver asset for consistency
-const loadLogoSrc = async () => loadLogoFallback();
 
 const loadSignatureSrc = async (profile) => {
   const b64 = profile?.signatureBase64;
@@ -229,7 +213,7 @@ const PaymentHistoryPage = ({ navigation }) => {
     Promise.all([loadShopProfile(), loadGstSettings()]).then(async ([profile, settings]) => {
       cachedProfile.current      = profile;
       cachedGstSettings.current  = settings;
-      cachedLogoSrc.current      = await loadLogoSrc(profile);
+      cachedLogoSrc.current      = await getLogoDataUri(profile);
       cachedSignatureSrc.current = await loadSignatureSrc(profile);
     });
   }, []);
@@ -245,7 +229,7 @@ const PaymentHistoryPage = ({ navigation }) => {
       };
     }
     const [profile, gstSettings] = await Promise.all([loadShopProfile(), loadGstSettings()]);
-    const [logoSrc, signatureSrc] = await Promise.all([loadLogoSrc(profile), loadSignatureSrc(profile)]);
+    const [logoSrc, signatureSrc] = await Promise.all([getLogoDataUri(profile), loadSignatureSrc(profile)]);
     cachedProfile.current      = profile;
     cachedGstSettings.current  = gstSettings;
     cachedLogoSrc.current      = logoSrc;
