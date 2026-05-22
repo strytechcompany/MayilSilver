@@ -6,43 +6,21 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import * as Print from 'expo-print';
 import QRCode from 'qrcode';
 import Header from '../components/Header';
 import { AppContext } from '../context/AppContext';
 import { createCustomer, fetchPaymentHistoryFromDb, fetchPaymentItemSuggestions, searchCustomers, savePaymentRecord } from '../services/api';
 import { loadGstSettings } from '../services/gstSettings';
-import { loadShopProfile } from '../services/shopProfile';
 import {
-  buildPaymentBillHtml,
   buildSummary,
   getStoredInvoiceSequence,
-  getLogoDataUri,
   loadPaymentItemHistory,
   PAYMENT_EDITABLE_INVOICE_KEY,
   reserveNextInvoiceNumber,
   savePaymentItemName,
 } from '../utils/paymentUtils';
 import { horizontalPadding, moderateScale, spacing } from '../utils/responsive';
-import * as FileSystem from 'expo-file-system/legacy';
 
-const BACKEND_URL = (require('../config').base_url || '').replace(/\/api\/?$/, '');
-
-const loadSignatureSrc = async (profile) => {
-  const b64 = profile?.signatureBase64;
-  if (b64) return b64.startsWith('data:') ? b64 : `data:image/png;base64,${b64}`;
-  const url = profile?.signatureUrl;
-  if (url) {
-    try {
-      const fullUrl = url.startsWith('http') ? url : `${BACKEND_URL}${url}`;
-      const cached = `${FileSystem.cacheDirectory}payment_sig_pdf.png`;
-      const { uri: dl } = await FileSystem.downloadAsync(fullUrl, cached);
-      const base64 = await FileSystem.readAsStringAsync(dl, { encoding: 'base64' });
-      if (base64) return `data:image/png;base64,${base64}`;
-    } catch {}
-  }
-  return '';
-};
 
 const createEmptyForm = (invoiceNumber = '') => ({
   userName: '',
@@ -515,42 +493,7 @@ const PaymentPage = ({ navigation }) => {
 
     setSubmitting(true);
     try {
-      const [{ payment, summary, gstSettings }, profile] = await Promise.all([
-        persistPayment('final'),
-        loadShopProfile(),
-      ]);
-
-      const [logoSrc, signatureSrc] = await Promise.all([
-        getLogoDataUri(profile),
-        loadSignatureSrc(profile),
-      ]);
-
-      const transaction = {
-        customerName: payment.customerName,
-        phone: payment.phone,
-        address: payment.address,
-        gstNo: payment.gstNo,
-        invoiceNumber: payment.invoiceNumber,
-        invoiceDate: payment.invoiceDate,
-      };
-
-      const shopProfileForHtml = {
-        name:               profile.shopName           || '',
-        tagline:            profile.tagline            || '',
-        gst:                profile.gstin              || '',
-        phone:              profile.phone              || '',
-        altPhone:           profile.altPhone           || '',
-        address:            profile.address            || '',
-        city:               profile.city               || '',
-        email:              profile.email              || '',
-        stateName:          profile.stateName          || '',
-        stateCode:          profile.stateCode          || '',
-        financialYear:      profile.financialYear      || '2025-2026',
-        termsAndConditions: profile.termsAndConditions || '',
-        signatureSrc:       signatureSrc               || '',
-      };
-
-      const html = buildPaymentBillHtml(transaction, summary, gstSettings, logoSrc, shopProfileForHtml);
+      const { payment } = await persistPayment('final');
 
       await reserveNextInvoiceNumber(PAYMENT_EDITABLE_INVOICE_KEY, payment.invoiceNumber);
       await savePaymentItemName(form.itemName);
@@ -559,11 +502,9 @@ const PaymentPage = ({ navigation }) => {
       }
       await loadCustomers();
       await loadItemSuggestions('');
-      await Print.printAsync({ html });
 
-      Alert.alert('Bill Generated', `Invoice: ${payment.invoiceNumber}`, [
-        { text: 'OK', onPress: resetForm }
-      ]);
+      resetForm();
+      navigation.navigate('PaymentBillPreview', { paymentData: payment });
     } catch (error) {
       console.error('handleSubmit error:', error);
       Alert.alert('Error', error.message || 'Failed to generate bill. Please try again.');
