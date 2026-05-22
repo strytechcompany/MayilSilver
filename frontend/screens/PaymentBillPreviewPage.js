@@ -13,31 +13,18 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { WebView } from 'react-native-webview';
 import * as Print from 'expo-print';
 import * as FileSystem from 'expo-file-system/legacy';
-import { Asset } from 'expo-asset';
 import Header from '../components/Header';
 import { loadGstSettings } from '../services/gstSettings';
 import { loadShopProfile } from '../services/shopProfile';
 import {
   buildPaymentBillHtml,
   buildSummary,
+  getLogoDataUri,
 } from '../utils/paymentUtils';
 import { horizontalPadding, moderateScale, spacing } from '../utils/responsive';
 import { AppContext } from '../context/AppContext';
 
 const BACKEND_URL = (require('../config').base_url || '').replace(/\/api\/?$/, '');
-const LOGO_ASSET = require('../assets/logo.png');
-
-// Module-level cache for logo and signature
-let _localLogoB64 = '';
-const loadLogoFallback = async () => {
-  if (_localLogoB64) return _localLogoB64;
-  try {
-    const [asset] = await Asset.loadAsync(LOGO_ASSET);
-    const b64 = await FileSystem.readAsStringAsync(asset.localUri ?? asset.uri, { encoding: 'base64' });
-    _localLogoB64 = `data:image/png;base64,${b64}`;
-  } catch {}
-  return _localLogoB64;
-};
 
 const loadSignatureSrc = async (profile) => {
   const url = profile?.signatureUrl;
@@ -104,11 +91,13 @@ const PaymentBillPreviewPage = ({ navigation, route }) => {
 
       setLoading(true);
       try {
-        const [profile, gstSettings, logoSrc, signatureSrc] = await Promise.all([
+        const [profile, gstSettings] = await Promise.all([
           loadShopProfile(),
           loadGstSettings(),
-          loadLogoFallback(),
-          loadShopProfile().then(loadSignatureSrc),
+        ]);
+        const [logoSrc, signatureSrc] = await Promise.all([
+          getLogoDataUri(profile),
+          loadSignatureSrc(profile),
         ]);
         const summary = buildSummary(paymentData.cash, paymentData.weight, gstSettings);
         summary.rows[0].particular = paymentData.itemName || '';

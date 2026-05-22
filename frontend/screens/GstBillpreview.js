@@ -16,31 +16,18 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
-import { Asset } from 'expo-asset';
 import QRCode from 'qrcode';
 import Header from '../components/Header';
 import { fetchGstCustomerById, updateGstCustomer, uploadInvoicePdf } from '../services/api';
 import { AppContext } from '../context/AppContext';
 import { loadGstSettings } from '../services/gstSettings';
 import { DEFAULT_SHOP_PROFILE, loadShopProfile } from '../services/shopProfile';
-import { GST_EDITABLE_INVOICE_KEY, reserveNextInvoiceNumber } from '../utils/paymentUtils';
+import { GST_EDITABLE_INVOICE_KEY, getLogoDataUri, reserveNextInvoiceNumber } from '../utils/paymentUtils';
 import { base_url } from '../config';
 import { horizontalPadding, moderateScale, spacing } from '../utils/responsive';
 
 const LOGO_ASSET = require('../assets/logo.png');
 const backend_url = base_url.replace(/\/api\/?$/, '');
-
-// Module-level cache so the local fallback is read from disk only once
-let _localLogoB64 = '';
-const loadLogoFallback = async () => {
-  if (_localLogoB64) return _localLogoB64;
-  try {
-    const [asset] = await Asset.loadAsync(LOGO_ASSET);
-    const b64 = await FileSystem.readAsStringAsync(asset.localUri ?? asset.uri, { encoding: 'base64' });
-    _localLogoB64 = `data:image/png;base64,${b64}`;
-  } catch {}
-  return _localLogoB64;
-};
 
 // ── Premium Silver Jewellery Theme ────────────────────────────────────────────
 const C = {
@@ -232,10 +219,10 @@ const GstBillpreview = ({ navigation, route }) => {
     setEditableInvoiceNumber(transaction?.invoiceNumber || '');
   }, [transaction?.invoiceNumber]);
 
-  // Load logo — always use bundled Mayil Silver logo for consistency
+  // Load logo from backend URL (falls back to local bundled asset via getLogoDataUri)
   useEffect(() => {
-    loadLogoFallback().then(setLogoDataUri).catch(() => setLogoDataUri(''));
-  }, []);
+    getLogoDataUri(shopProfile).then(setLogoDataUri).catch(() => setLogoDataUri(''));
+  }, [shopProfile]);
 
   const loadTransaction = useCallback(async () => {
     if (!transactionId) return;
@@ -321,7 +308,7 @@ const GstBillpreview = ({ navigation, route }) => {
         setQrSvg(workingQrSvg);
       }
 
-      const effectiveLogo = logoDataUri || await loadLogoFallback();
+      const effectiveLogo = logoDataUri || await getLogoDataUri(shopProfile);
 
       let signatureSrc = '';
       const sigUrl = shopProfile?.signatureUrl;
