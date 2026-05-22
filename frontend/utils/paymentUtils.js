@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Asset } from 'expo-asset';
 import * as FileSystem from 'expo-file-system/legacy';
 import { base_url } from '../config';
+import { LOGO_DATA_URI } from '../assets/logoBase64';
 
 const LOGO_ASSET = require('../assets/logo.png');
 const BACKEND_URL = (base_url || '').replace(/\/api\/?$/, '');
@@ -183,7 +184,7 @@ export const getLogoDataUri = async (profile) => {
     const cached = await AsyncStorage.getItem(LOGO_CACHE_KEY);
     if (cached) return cached;
   } catch {}
-  // 4. Local bundled asset fallback
+  // 4. Local bundled asset — try expo-asset first, then pre-built base64 constant
   try {
     const asset = Asset.fromModule(LOGO_ASSET);
     await asset.downloadAsync();
@@ -191,9 +192,15 @@ export const getLogoDataUri = async (profile) => {
       const b64 = await FileSystem.readAsStringAsync(asset.localUri, {
         encoding: FileSystem.EncodingType.Base64,
       });
-      if (b64) return `data:image/png;base64,${b64}`;
+      if (b64) {
+        const dataUri = `data:image/png;base64,${b64}`;
+        AsyncStorage.setItem(LOGO_CACHE_KEY, dataUri).catch(() => {});
+        return dataUri;
+      }
     }
   } catch {}
+  // 5. Pre-built base64 bundled at compile time — always available offline
+  if (LOGO_DATA_URI) return LOGO_DATA_URI;
   return '';
 };
 
