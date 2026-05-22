@@ -507,7 +507,7 @@ export const deletePaymentRecord = async (id) => {
 
 export const updatePaymentRecord = async (id, payload) => {
   try {
-    return await putJSON(`${base_url}/payments/${id}`, payload);
+    return await postJSON(`${base_url}/payments/save`, { ...payload, paymentId: id });
   } catch (error) {
     console.error('updatePaymentRecord Error:', error);
     return { success: false, message: 'Network error' };
@@ -723,6 +723,21 @@ export const fetchDailyReport = async (date) => {
   } catch (error) {
     console.error('fetchDailyReport Error:', error);
     return { success: false, bills: [], gstBills: [], summary: {} };
+  }
+};
+
+export const fetchB2BReport = async (filters = {}) => {
+  try {
+    const params = new URLSearchParams();
+    if (filters.date)  params.append('date',  filters.date);
+    if (filters.month) params.append('month', filters.month);
+    if (filters.year)  params.append('year',  filters.year);
+    if (filters.from)  params.append('from',  filters.from);
+    if (filters.to)    params.append('to',    filters.to);
+    return await getJSON(`${base_url}/b2b-report?${params}`);
+  } catch (error) {
+    console.error('fetchB2BReport Error:', error);
+    return { success: false, summaries: [], totals: {} };
   }
 };
 

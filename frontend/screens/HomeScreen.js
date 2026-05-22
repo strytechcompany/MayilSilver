@@ -246,7 +246,7 @@ const HomeScreen = ({ navigation }) => {
               <ActionCard title="Mini Statement" icon="file-chart" onPress={() => navigateTo('MiniStatement')} />
             )}
             {canAccess('b2b_reports') && (
-              <ActionCard title="B2B Reports" icon="chart-bar" onPress={() => navigateTo('Report')} />
+              <ActionCard title="B2B Reports" icon="chart-bar" onPress={() => navigateTo('B2BReport')} />
             )}
 
             {/* ── Payment pages ─────────────────────────────────── */}

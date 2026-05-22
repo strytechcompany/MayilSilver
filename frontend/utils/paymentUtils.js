@@ -330,7 +330,6 @@ export const buildPaymentBillHtml = (tx, summary, settings, logoSrc = '', profil
     <div class="detail-box">
       <div class="d-row"><span class="d-lbl">Invoice Number</span><span class="d-colon">:</span><span class="d-val">${esc(tx.invoiceNumber || '-')}</span></div>
       <div class="d-row"><span class="d-lbl">Invoice Date</span><span class="d-colon">:</span><span class="d-val">${esc(fmtDate(tx.invoiceDate))}</span></div>
-      <div class="d-row"><span class="d-lbl">Mobile No</span><span class="d-colon">:</span><span class="d-val">${esc(tx.phone || '-')}</span></div>
     </div>
   </div>
 

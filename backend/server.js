@@ -1351,6 +1351,70 @@ router.delete('/payments/:id', async (req, res) => {
   }
 });
 
+router.put('/payments/:id', async (req, res) => {
+  try {
+    const existing = await PaymentTransaction.findById(req.params.id);
+    if (!existing) return res.status(404).json({ success: false, message: 'Payment not found' });
+
+    const {
+      customerId, customerName, phone, address, gstNo,
+      itemName, items, cash, ftRate, weight,
+      subtotal, cgst, sgst, roundOff, total,
+      invoiceDate, status,
+    } = req.body;
+
+    const normalizedStatus = status === 'final' ? 'final' : (status === 'draft' ? 'draft' : existing.status);
+    const trimmedCustomerName = String(customerName || existing.customerName || '').trim();
+    const trimmedItemName     = String(itemName     || existing.itemName     || '').trim();
+
+    const customer = await findOrCreatePaymentCustomer({
+      customerId: customerId || existing.customerId,
+      customerName: trimmedCustomerName,
+      phone:   phone   !== undefined ? phone   : existing.phone,
+      address: address !== undefined ? address : existing.address,
+      gstNo:   gstNo   !== undefined ? gstNo   : existing.gstNo,
+    });
+
+    const normalizedItems = normalizePaymentItems({
+      items:    items    !== undefined ? items    : existing.items,
+      itemName: trimmedItemName,
+      weight:   weight   !== undefined ? weight   : existing.weight,
+      cash:     cash     !== undefined ? cash     : existing.cash,
+      ftRate:   ftRate   !== undefined ? ftRate   : existing.ftRate,
+    });
+
+    Object.assign(existing, {
+      status:       normalizedStatus,
+      customerId:   customer?._id || existing.customerId,
+      customerName: trimmedCustomerName,
+      phone:        phone   !== undefined ? String(phone   || '').trim() : existing.phone,
+      address:      address !== undefined ? String(address || '').trim() : existing.address,
+      gstNo:        gstNo   !== undefined ? String(gstNo   || '').trim() : existing.gstNo,
+      itemName:     trimmedItemName,
+      items:        normalizedItems,
+      cash:         cash     !== undefined ? toNumber(cash)     : existing.cash,
+      ftRate:       ftRate   !== undefined ? toNumber(ftRate)   : existing.ftRate,
+      weight:       weight   !== undefined ? toNumber(weight)   : existing.weight,
+      subtotal:     subtotal !== undefined ? toNumber(subtotal) : existing.subtotal,
+      cgst:         cgst     !== undefined ? toNumber(cgst)     : existing.cgst,
+      sgst:         sgst     !== undefined ? toNumber(sgst)     : existing.sgst,
+      roundOff:     roundOff !== undefined ? toNumber(roundOff) : existing.roundOff,
+      total:        total    !== undefined ? toNumber(total)    : existing.total,
+      invoiceDate:  invoiceDate !== undefined ? toDate(invoiceDate) : existing.invoiceDate,
+      printedAt:    normalizedStatus === 'final' ? (existing.printedAt || new Date()) : existing.printedAt,
+    });
+
+    const saved = await existing.save();
+    const populated = await PaymentTransaction.findById(saved._id)
+      .populate('customerId', 'customerName phone address gstin');
+
+    res.json({ success: true, payment: populated });
+  } catch (err) {
+    console.error('Update Payment Error:', err);
+    res.status(400).json({ success: false, message: err.message });
+  }
+});
+
 router.post('/transactions', async (req, res) => {
   try {
     const { customerId, issueItems, receiptItems, cashEntries, previousBalance, finalBalance } = req.body;
@@ -1723,6 +1787,130 @@ router.get('/reports', async (req, res) => {
     };
 
     res.json({ success: true, bills, gstBills, summary });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ── B2B CUSTOMER SUMMARY REPORT ───────────────────────────────
+router.get('/b2b-report', async (req, res) => {
+  try {
+    const { date, month, year, from, to } = req.query;
+
+    // Build primary filter date range
+    let fromDate, toDate;
+    if (date) {
+      fromDate = new Date(date); fromDate.setHours(0, 0, 0, 0);
+      toDate   = new Date(date); toDate.setHours(23, 59, 59, 999);
+    } else if (month && year) {
+      fromDate = new Date(Number(year), Number(month) - 1, 1);
+      toDate   = new Date(Number(year), Number(month), 0, 23, 59, 59, 999);
+    } else if (year) {
+      fromDate = new Date(Number(year), 0, 1);
+      toDate   = new Date(Number(year), 11, 31, 23, 59, 59, 999);
+    } else if (from && to) {
+      fromDate = new Date(from); fromDate.setHours(0, 0, 0, 0);
+      toDate   = new Date(to);   toDate.setHours(23, 59, 59, 999);
+    } else {
+      fromDate = new Date(0);
+      toDate   = new Date();
+    }
+
+    // Current month/year ranges for monthly & yearly totals
+    const now = new Date();
+    const curMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const curMonthEnd   = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+    const curYearStart  = new Date(now.getFullYear(), 0, 1);
+    const curYearEnd    = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
+
+    const [filteredBills, allBills, monthBills, yearBills, customers] = await Promise.all([
+      Bill.find({ createdAt: { $gte: fromDate, $lte: toDate } }).sort({ createdAt: -1 }).lean(),
+      Bill.find({}).sort({ createdAt: -1 }).lean(),
+      Bill.find({ createdAt: { $gte: curMonthStart, $lte: curMonthEnd } }).lean(),
+      Bill.find({ createdAt: { $gte: curYearStart,  $lte: curYearEnd  } }).lean(),
+      Customer.find({}).lean(),
+    ]);
+
+    // Customer lookup by _id string
+    const customerMap = {};
+    customers.forEach(c => { customerMap[String(c._id)] = c; });
+
+    // Latest bill per customer (from all bills, already sorted desc)
+    const latestBillMap = {};
+    allBills.forEach(b => {
+      const cid = String(b.customerId);
+      if (!latestBillMap[cid]) latestBillMap[cid] = b;
+    });
+
+    // Monthly totals per customer
+    const monthMap = {};
+    monthBills.forEach(b => {
+      const cid = String(b.customerId);
+      if (!monthMap[cid]) monthMap[cid] = { issueWeight: 0, receiptWeight: 0, cash: 0, billCount: 0 };
+      monthMap[cid].issueWeight   += b.issueTotalPurity   || 0;
+      monthMap[cid].receiptWeight += b.receiptTotalPurity || 0;
+      monthMap[cid].cash          += b.cashTotalAmount    || 0;
+      monthMap[cid].billCount     += 1;
+    });
+
+    // Yearly totals per customer
+    const yearMap = {};
+    yearBills.forEach(b => {
+      const cid = String(b.customerId);
+      if (!yearMap[cid]) yearMap[cid] = { issueWeight: 0, receiptWeight: 0, cash: 0, billCount: 0 };
+      yearMap[cid].issueWeight   += b.issueTotalPurity   || 0;
+      yearMap[cid].receiptWeight += b.receiptTotalPurity || 0;
+      yearMap[cid].cash          += b.cashTotalAmount    || 0;
+      yearMap[cid].billCount     += 1;
+    });
+
+    // Group filtered bills by customerId
+    const filteredMap = {};
+    filteredBills.forEach(b => {
+      const cid = String(b.customerId);
+      if (!filteredMap[cid]) filteredMap[cid] = [];
+      filteredMap[cid].push(b);
+    });
+
+    // Build customer summaries
+    const summaries = Object.entries(filteredMap).map(([cid, cbills]) => {
+      const customer   = customerMap[cid];
+      const latestBill = latestBillMap[cid] || cbills[0];
+      const firstInPeriod = cbills[cbills.length - 1];
+
+      const totalIssue   = cbills.reduce((s, b) => s + (b.issueTotalPurity   || 0), 0);
+      const totalReceipt = cbills.reduce((s, b) => s + (b.receiptTotalPurity || 0), 0);
+      const totalCash    = cbills.reduce((s, b) => s + (b.cashTotalAmount    || 0), 0);
+
+      return {
+        customerId:      cid,
+        customerName:    customer?.customerName || cbills[0].customerName || 'Unknown',
+        phone:           customer?.phone        || '',
+        billCount:       cbills.length,
+        totalIssueWeight:   parseFloat(totalIssue.toFixed(3)),
+        totalReceiptWeight: parseFloat(totalReceipt.toFixed(3)),
+        totalCash:          parseFloat(totalCash.toFixed(2)),
+        currentBalance:     latestBill?.finalBalance  || 0,
+        advanceBalance:     customer?.ab              || 0,
+        oldBalance:         customer?.ob              || 0,
+        monthlyTotal:  monthMap[cid]  || { issueWeight: 0, receiptWeight: 0, cash: 0, billCount: 0 },
+        yearlyTotal:   yearMap[cid]   || { issueWeight: 0, receiptWeight: 0, cash: 0, billCount: 0 },
+        lastBillDate:  cbills[0]?.createdAt || null,
+        firstBillDate: firstInPeriod?.createdAt || null,
+      };
+    });
+
+    summaries.sort((a, b) => a.customerName.localeCompare(b.customerName));
+
+    const totals = {
+      customers:     summaries.length,
+      bills:         filteredBills.length,
+      issueWeight:   parseFloat(summaries.reduce((s, c) => s + c.totalIssueWeight,   0).toFixed(3)),
+      receiptWeight: parseFloat(summaries.reduce((s, c) => s + c.totalReceiptWeight, 0).toFixed(3)),
+      cash:          parseFloat(summaries.reduce((s, c) => s + c.totalCash,          0).toFixed(2)),
+    };
+
+    res.json({ success: true, summaries, totals, fromDate, toDate });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

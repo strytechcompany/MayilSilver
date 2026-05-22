@@ -512,7 +512,6 @@ const GstBillpreview = ({ navigation, route }) => {
             <View style={styles.invoiceBox}>
               <DetailRow label="Invoice Number" value={transaction?.invoiceNumber || '-'} />
               <DetailRow label="Invoice Date" value={formatDisplayDate(transaction?.invoiceDate)} />
-              <DetailRow label="Mobile No" value={transaction?.phone || '-'} />
             </View>
           </View>
 
@@ -871,7 +870,6 @@ const buildInvoiceHtml = (transaction, summary, settings, logoSrc = '', profile 
     <div class="detail-box">
       <div class="d-row"><span class="d-lbl">Invoice Number</span><span class="d-colon">:</span><span class="d-val">${escapeHtml(transaction.invoiceNumber || '-')}</span></div>
       <div class="d-row"><span class="d-lbl">Invoice Date</span><span class="d-colon">:</span><span class="d-val">${escapeHtml(formatDisplayDate(transaction.invoiceDate))}</span></div>
-      <div class="d-row"><span class="d-lbl">Mobile No</span><span class="d-colon">:</span><span class="d-val">${escapeHtml(transaction.phone || '-')}</span></div>
     </div>
   </div>
 

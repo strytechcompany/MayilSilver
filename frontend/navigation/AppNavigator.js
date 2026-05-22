@@ -30,6 +30,7 @@ import PaymentPage from '../screens/PaymentPage';
 import PaymentHistoryPage from '../screens/PaymentHistoryPage';
 import PaymentBillPreviewPage from '../screens/PaymentBillPreviewPage';
 import CustomerBillHistoryPage from '../screens/CustomerBillHistoryPage';
+import B2BReportPage from '../screens/B2BReportPage';
 
 const AuthStack = createStackNavigator();
 const HomeStack = createStackNavigator();
@@ -123,6 +124,7 @@ const GuardedBillHistory        = withPermission(BillHistoryPage,        ['bill_
 const GuardedBillPreview        = withPermission(BillPreviewPage,        ['bill_history', 'b2b_calculation', 'customer_list']); // sub-screen
 const GuardedMiniStatement      = withPermission(MiniStatementPage,      ['mini_statement']);
 const GuardedReport             = withPermission(ReportScreen,           ['b2b_reports', 'gst_history']);
+const GuardedB2BReport          = withPermission(B2BReportPage,          ['b2b_reports']);
 const GuardedGSTCustomer        = withPermission(GSTCustomerPage,        ['gst_customer']);
 const GuardedGSTBillPreview     = withPermission(GstBillpreview,         ['gst_customer', 'gst_history']); // sub-screen
 const GuardedGSTBillHistory     = withPermission(GstBillhistory,         ['gst_history']);
@@ -163,6 +165,7 @@ const MainNavigator = () => (
     <HomeStack.Screen name="BillPreview"        component={GuardedBillPreview}        options={noHeader} />
     <HomeStack.Screen name="MiniStatement"      component={GuardedMiniStatement}      options={noHeader} />
     <HomeStack.Screen name="Report"             component={GuardedReport}             options={noHeader} />
+    <HomeStack.Screen name="B2BReport"          component={GuardedB2BReport}          options={noHeader} />
     <HomeStack.Screen name="GSTCustomer"        component={GuardedGSTCustomer}        options={noHeader} />
     <HomeStack.Screen name="GSTBillPreview"     component={GuardedGSTBillPreview}     options={noHeader} />
     <HomeStack.Screen name="GSTBillHistory"     component={GuardedGSTBillHistory}     options={noHeader} />
