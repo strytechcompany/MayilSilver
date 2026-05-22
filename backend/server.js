@@ -798,6 +798,23 @@ router.get('/shop-profile', async (req, res) => {
     if (!profile) {
       profile = await ShopProfile.create({ _singleton: 'profile' });
     }
+    // Backfill logoBase64 if logoUrl exists but base64 was never stored
+    if (profile.logoUrl && !profile.logoBase64) {
+      try {
+        const filename = path.basename(profile.logoUrl);
+        const filePath = path.join(LOGO_DIR, filename);
+        if (fs.existsSync(filePath)) {
+          const b64data = fs.readFileSync(filePath, 'base64');
+          const ext = path.extname(filename).toLowerCase();
+          const mime = ext === '.png' ? 'image/png' : 'image/jpeg';
+          profile = await ShopProfile.findOneAndUpdate(
+            { _singleton: 'profile' },
+            { $set: { logoBase64: `data:${mime};base64,${b64data}` } },
+            { new: true }
+          );
+        }
+      } catch {}
+    }
     res.json({ success: true, profile });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -847,10 +864,11 @@ router.post('/shop-profile/logo', async (req, res) => {
 
     fs.writeFileSync(absolutePath, base64Data, 'base64');
     const logoUrl = `/uploads/logo/${safeName}`;
+    const logoBase64 = `data:${mimeType || 'image/png'};base64,${base64Data}`;
 
     await ShopProfile.findOneAndUpdate(
       { _singleton: 'profile' },
-      { $set: { logoUrl } },
+      { $set: { logoUrl, logoBase64 } },
       { upsert: true }
     );
 

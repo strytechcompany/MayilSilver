@@ -152,32 +152,49 @@ export const reserveNextInvoiceNumber = async (storageKey, currentInvoiceNumber)
 };
 
 // ── Logo helper ────────────────────────────────────────────────────────────
+const LOGO_CACHE_KEY = 'logoBase64Cache';
+
 export const getLogoDataUri = async (profile) => {
-  // 1. Backend URL — always set when logo is uploaded via POST /api/shop-profile/logo
+  // 1. logoBase64 from MongoDB — always works, no network download needed
+  if (profile?.logoBase64) {
+    const b = profile.logoBase64;
+    const dataUri = b.startsWith('data:') ? b : `data:image/png;base64,${b}`;
+    AsyncStorage.setItem(LOGO_CACHE_KEY, dataUri).catch(() => {});
+    return dataUri;
+  }
+  // 2. Download from backend URL, cache result for offline use
   if (profile?.logoUrl) {
     try {
       const fullUrl = profile.logoUrl.startsWith('http')
         ? profile.logoUrl
         : `${BACKEND_URL}${profile.logoUrl}`;
-      const cached = `${FileSystem.cacheDirectory}payment_logo_pdf.png`;
-      const { uri: dl } = await FileSystem.downloadAsync(fullUrl, cached);
+      const dest = `${FileSystem.cacheDirectory}payment_logo_pdf.png`;
+      const { uri: dl } = await FileSystem.downloadAsync(fullUrl, dest);
       const b64 = await FileSystem.readAsStringAsync(dl, { encoding: FileSystem.EncodingType.Base64 });
-      if (b64) return `data:image/png;base64,${b64}`;
+      if (b64) {
+        const dataUri = `data:image/png;base64,${b64}`;
+        AsyncStorage.setItem(LOGO_CACHE_KEY, dataUri).catch(() => {});
+        return dataUri;
+      }
     } catch {}
   }
-  // 2. Base64 stored directly in MongoDB
-  if (profile?.logoBase64) {
-    const b = profile.logoBase64;
-    if (b) return b.startsWith('data:') ? b : `data:image/png;base64,${b}`;
-  }
-  // 3. Fallback: local bundled asset
+  // 3. AsyncStorage cache — survives APK installs after first successful load
   try {
-    const [asset] = await Asset.loadAsync(LOGO_ASSET);
-    const b64 = await FileSystem.readAsStringAsync(asset.localUri ?? asset.uri, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
-    return `data:image/png;base64,${b64}`;
-  } catch { return ''; }
+    const cached = await AsyncStorage.getItem(LOGO_CACHE_KEY);
+    if (cached) return cached;
+  } catch {}
+  // 4. Local bundled asset fallback
+  try {
+    const asset = Asset.fromModule(LOGO_ASSET);
+    await asset.downloadAsync();
+    if (asset.localUri) {
+      const b64 = await FileSystem.readAsStringAsync(asset.localUri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      if (b64) return `data:image/png;base64,${b64}`;
+    }
+  } catch {}
+  return '';
 };
 
 // ── Bill summary builder ───────────────────────────────────────────────────
