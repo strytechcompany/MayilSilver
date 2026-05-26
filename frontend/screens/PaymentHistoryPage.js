@@ -183,6 +183,8 @@ const PaymentHistoryPage = ({ navigation }) => {
   const [editingRecord, setEditingRecord]       = useState(null);
   const [editForm, setEditForm]                 = useState({});
   const [editSaving, setEditSaving]             = useState(false);
+  const [editDatePickerVisible, setEditDatePickerVisible] = useState(false);
+  const [editPickerMonth, setEditPickerMonth]   = useState(() => { const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), 1); });
 
   // Cached settings (loaded once)
   const cachedProfile      = useRef(null);
@@ -306,6 +308,21 @@ const PaymentHistoryPage = ({ navigation }) => {
 
   const hasActiveFilters  = !!(searchQuery.trim() || appliedFromDate || appliedToDate);
   const hasPendingChanges = fromDate !== appliedFromDate || toDate !== appliedToDate;
+
+  const editPickerDays = useMemo(() => {
+    const y = editPickerMonth.getFullYear(), mo = editPickerMonth.getMonth();
+    const firstDay = new Date(y, mo, 1).getDay();
+    const daysInMo = new Date(y, mo + 1, 0).getDate();
+    const cells = [];
+    for (let i = 0; i < firstDay; i++) cells.push({ key: `ep-e-${i}`, empty: true });
+    for (let d = 1; d <= daysInMo; d++) {
+      const iso = `${y}-${String(mo + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      cells.push({ key: iso, empty: false, label: d, iso });
+    }
+    return cells;
+  }, [editPickerMonth]);
+
+  const editPickerMonthLabel = `${MONTH_NAMES[editPickerMonth.getMonth()]} ${editPickerMonth.getFullYear()}`;
 
   // ── Date picker ───────────────────────────────────────────
   const openDatePicker = (field) => {
@@ -453,6 +470,10 @@ const PaymentHistoryPage = ({ navigation }) => {
 
   const handleEdit = useCallback((record) => {
     setEditingRecord(record);
+    const rawDate = record.invoiceDate || record.updatedAt || record.createdAt;
+    const d = rawDate ? new Date(rawDate) : new Date();
+    const isoDate = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    setEditPickerMonth(new Date(d.getFullYear(), d.getMonth(), 1));
     setEditForm({
       customerName:  record.customerName  || '',
       phone:         record.phone         || '',
@@ -462,6 +483,7 @@ const PaymentHistoryPage = ({ navigation }) => {
       cash:          String(record.cash   || ''),
       invoiceNumber: record.invoiceNumber || '',
       status:        record.status        || 'draft',
+      invoiceDate:   isoDate,
     });
     setEditModalVisible(true);
   }, []);
@@ -470,15 +492,33 @@ const PaymentHistoryPage = ({ navigation }) => {
     if (!editingRecord) return;
     setEditSaving(true);
     try {
+      const cashNum   = parseFloat(editForm.cash)   || 0;
+      const weightNum = parseFloat(editForm.weight) || 0;
+      let total = cashNum, cgst = 0, sgst = 0, roundOff = 0;
+      if (cachedGstSettings.current) {
+        const summary = buildSummary(cashNum, weightNum, cachedGstSettings.current);
+        total    = summary.grandTotal;
+        cgst     = summary.cgst;
+        sgst     = summary.sgst;
+        roundOff = summary.roundOff;
+      }
       const payload = {
         customerName:  editForm.customerName.trim(),
         phone:         editForm.phone.trim(),
         itemName:      editForm.itemName.trim(),
-        weight:        parseFloat(editForm.weight) || 0,
+        weight:        weightNum,
         ftRate:        parseFloat(editForm.ftRate) || 0,
-        cash:          parseFloat(editForm.cash)   || 0,
+        cash:          cashNum,
+        subtotal:      cashNum,
+        cgst,
+        sgst,
+        roundOff,
+        total,
         invoiceNumber: editForm.invoiceNumber.trim(),
         status:        editForm.status,
+        invoiceDate:   editForm.invoiceDate
+          ? new Date(editForm.invoiceDate + 'T00:00:00').toISOString()
+          : editingRecord.invoiceDate,
       };
       const res = await updatePaymentRecord(editingRecord._id, payload);
       if (res?.success) {
@@ -672,6 +712,20 @@ const PaymentHistoryPage = ({ navigation }) => {
           </TouchableOpacity>
         ))}
       </View>
+
+      {/* Total Amount Banner */}
+      {!loading && (
+        <View style={styles.totalBanner}>
+          <View>
+            <Text style={styles.totalBannerAmount}>₹ {fmtCurrency(stats.total)}</Text>
+            <Text style={styles.totalBannerLabel}>Total Amount{filter !== 'all' ? ' · Filtered' : ''}</Text>
+          </View>
+          <View style={styles.totalBannerRight}>
+            <MaterialCommunityIcons name="receipt-text" size={16} color="#8FA4B5" />
+            <Text style={styles.totalBannerCount}>{stats.count} bill{stats.count !== 1 ? 's' : ''}</Text>
+          </View>
+        </View>
+      )}
 
       {/* Filter panel */}
       {!loading && (
@@ -926,6 +980,25 @@ const PaymentHistoryPage = ({ navigation }) => {
                 ))}
 
                 <View style={styles.editField}>
+                  <Text style={styles.editLabel}>Invoice Date</Text>
+                  <TouchableOpacity
+                    style={[styles.editInput, styles.editDateBtn]}
+                    onPress={() => {
+                      const d = editForm.invoiceDate ? new Date(editForm.invoiceDate + 'T00:00:00') : new Date();
+                      setEditPickerMonth(new Date(d.getFullYear(), d.getMonth(), 1));
+                      setEditDatePickerVisible(true);
+                    }}
+                  >
+                    <Text style={styles.editDateText}>
+                      {editForm.invoiceDate
+                        ? editForm.invoiceDate.split('-').reverse().join('-')
+                        : 'Select date'}
+                    </Text>
+                    <MaterialCommunityIcons name="calendar-month-outline" size={17} color="#64748B" />
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.editField}>
                   <Text style={styles.editLabel}>Status</Text>
                   <View style={{ flexDirection: 'row', gap: 10 }}>
                     {['draft', 'final'].map((s) => (
@@ -1030,6 +1103,47 @@ const PaymentHistoryPage = ({ navigation }) => {
             </TouchableOpacity>
           </View>
         </SafeAreaView>
+      </Modal>
+
+      {/* Edit date picker */}
+      <Modal visible={editDatePickerVisible} transparent animationType="fade" onRequestClose={() => setEditDatePickerVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.datePickerCard}>
+            <View style={styles.datePickerHeader}>
+              <Text style={styles.datePickerTitle}>Select Invoice Date</Text>
+              <TouchableOpacity onPress={() => setEditDatePickerVisible(false)}>
+                <MaterialCommunityIcons name="close" size={20} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.datePickerMonthRow}>
+              <TouchableOpacity style={styles.datePickerNavBtn}
+                onPress={() => setEditPickerMonth((p) => new Date(p.getFullYear(), p.getMonth() - 1, 1))}>
+                <MaterialCommunityIcons name="chevron-left" size={20} color="#1C2B3A" />
+              </TouchableOpacity>
+              <Text style={styles.datePickerMonthText}>{editPickerMonthLabel}</Text>
+              <TouchableOpacity style={styles.datePickerNavBtn}
+                onPress={() => setEditPickerMonth((p) => new Date(p.getFullYear(), p.getMonth() + 1, 1))}>
+                <MaterialCommunityIcons name="chevron-right" size={20} color="#1C2B3A" />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.weekdayRow}>
+              {WEEKDAY_LABELS.map((l) => <Text key={l} style={styles.weekdayText}>{l}</Text>)}
+            </View>
+            <View style={styles.daysGrid}>
+              {editPickerDays.map((cell) => {
+                if (cell.empty) return <View key={cell.key} style={styles.dayCell} />;
+                const isSelected = cell.iso === editForm.invoiceDate;
+                return (
+                  <TouchableOpacity key={cell.key}
+                    style={[styles.dayCell, styles.dayBtn, isSelected && styles.dayBtnActive]}
+                    onPress={() => { setEditForm((f) => ({ ...f, invoiceDate: cell.iso })); setEditDatePickerVisible(false); }}>
+                    <Text style={[styles.dayText, isSelected && styles.dayTextActive]}>{cell.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        </View>
       </Modal>
     </SafeAreaView>
   );
@@ -1294,6 +1408,42 @@ const styles = StyleSheet.create({
   statusPickerActive: { backgroundColor: '#1C2B3A', borderColor: '#1C2B3A' },
   statusPickerText: { fontSize: moderateScale(12), fontWeight: '700', color: '#475569' },
   statusPickerTextActive: { color: '#FFF' },
+
+  // Total amount banner
+  totalBanner: {
+    backgroundColor: '#1C2B3A',
+    marginHorizontal: horizontalPadding,
+    marginTop: 10,
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  totalBannerAmount: {
+    fontSize: moderateScale(22),
+    fontWeight: '900',
+    color: '#10B981',
+    letterSpacing: 0.3,
+  },
+  totalBannerLabel: {
+    fontSize: moderateScale(11),
+    color: '#8FA4B5',
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  totalBannerRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  totalBannerCount: { fontSize: moderateScale(13), fontWeight: '700', color: '#94A3B8' },
+
+  // Edit date button
+  editDateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  editDateText: { fontSize: moderateScale(13), color: '#1C2B3A', fontWeight: '600' },
+
 });
 
 export default PaymentHistoryPage;
