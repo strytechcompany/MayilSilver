@@ -1320,7 +1320,7 @@ router.post('/payments/save', async (req, res) => {
     });
 
     const payload = {
-      invoiceNumber: existing?.invoiceNumber || invoiceNumber || await getNextPaymentInvoiceNo(),
+      invoiceNumber: String(invoiceNumber || '').trim() || existing?.invoiceNumber || await getNextPaymentInvoiceNo(),
       status: normalizedStatus,
       customerId: customer?._id || existing?.customerId || null,
       customerName: trimmedCustomerName,
