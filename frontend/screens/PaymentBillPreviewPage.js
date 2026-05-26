@@ -75,7 +75,7 @@ const PaymentBillPreviewPage = ({ navigation, route }) => {
     { label: 'Phone', value: paymentData?.phone || '-' },
     { label: 'GST No', value: paymentData?.gstNo || '-' },
     { label: 'Item', value: paymentData?.itemName || '-' },
-    { label: 'Weight', value: paymentData?.weight ? `${Number(paymentData.weight).toFixed(1)} g` : '-' },
+    { label: 'Weight', value: paymentData?.weight ? `${Number(paymentData.weight).toFixed(1)}g` : '-' },
     { label: 'Silver Rate', value: paymentData?.ftRate ? `Rs ${fmtCurrency(paymentData.ftRate)}` : (goldRate ? `Rs ${fmtCurrency(goldRate)}` : '-') },
     { label: 'Amount', value: directAmount > 0 ? `Rs ${fmtCurrency(directAmount)}` : '-' },
     { label: 'Bill No', value: paymentData?.invoiceNumber || '-' },
