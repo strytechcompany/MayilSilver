@@ -631,7 +631,7 @@ const PaymentHistoryPage = ({ navigation }) => {
         </View>
         <View style={styles.detailRow}>
           <MaterialCommunityIcons name="cube-outline" size={12} color="#9CA3AF" />
-          <Text style={styles.detailText}>{item.itemName}  •  {item.weight} g  •  FT {item.ftRate}</Text>
+          <Text style={styles.detailText}>{item.itemName}  •  {Number(item.weight || 0).toFixed(1)} g  •  FT {item.ftRate}</Text>
         </View>
         <View style={styles.detailRow}>
           <MaterialCommunityIcons name="phone-outline" size={12} color="#9CA3AF" />
@@ -713,161 +713,157 @@ const PaymentHistoryPage = ({ navigation }) => {
         ))}
       </View>
 
-      {/* Total Amount Banner */}
-      {!loading && (
-        <View style={styles.totalBanner}>
+      {/* Scrollable list — header contains filters + summary so everything scrolls together */}
+      <FlatList
+        data={loading ? [] : listData}
+        keyExtractor={listKeyExt}
+        renderItem={renderItem}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={[styles.list, selCount > 0 && { paddingBottom: 120 }]}
+        ListHeaderComponent={
           <View>
-            <Text style={styles.totalBannerAmount}>₹ {fmtCurrency(stats.total)}</Text>
-            <Text style={styles.totalBannerLabel}>Total Amount{filter !== 'all' ? ' · Filtered' : ''}</Text>
-          </View>
-          <View style={styles.totalBannerRight}>
-            <MaterialCommunityIcons name="receipt-text" size={16} color="#8FA4B5" />
-            <Text style={styles.totalBannerCount}>{stats.count} bill{stats.count !== 1 ? 's' : ''}</Text>
-          </View>
-        </View>
-      )}
+            {/* Total Amount Banner */}
+            <View style={styles.totalBanner}>
+              <View>
+                <Text style={styles.totalBannerAmount}>₹ {fmtCurrency(stats.total)}</Text>
+                <Text style={styles.totalBannerLabel}>Total Amount{filter !== 'all' ? ' · Filtered' : ''}</Text>
+              </View>
+              <View style={styles.totalBannerRight}>
+                <MaterialCommunityIcons name="receipt-text" size={16} color="#8FA4B5" />
+                <Text style={styles.totalBannerCount}>{stats.count} bill{stats.count !== 1 ? 's' : ''}</Text>
+              </View>
+            </View>
 
-      {/* Filter panel */}
-      {!loading && (
-        <View style={styles.filterPanel}>
-          <View style={styles.filterPanelHeader}>
-            <Text style={styles.filterPanelTitle}>Filters</Text>
-            {hasActiveFilters && (
-              <TouchableOpacity style={styles.clearFiltersBtn} onPress={() => {
-                setSearchQuery(''); setAppliedFromDate(''); setAppliedToDate('');
-                setFromDate(''); setToDate('');
-              }}>
-                <Text style={styles.clearFiltersText}>Clear</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-
-          <View style={styles.searchBar}>
-            <MaterialCommunityIcons name="magnify" size={18} color="#94A3B8" />
-            <TextInput
-              style={styles.searchInput}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              placeholder="Search by Name, Phone, Invoice No"
-              placeholderTextColor="#94A3B8"
-            />
-            {!!searchQuery && (
-              <TouchableOpacity onPress={() => setSearchQuery('')}>
-                <MaterialCommunityIcons name="close-circle" size={18} color="#94A3B8" />
-              </TouchableOpacity>
-            )}
-          </View>
-
-          <View style={styles.dateFilterRow}>
-            {(['from', 'to']).map((field) => {
-              const val = field === 'from' ? fromDate : toDate;
-              const label = field === 'from' ? 'From Date' : 'To Date';
-              return (
-                <View key={field} style={styles.dateFilterField}>
-                  <Text style={styles.dateFilterLabel}>{label}</Text>
-                  <TouchableOpacity style={styles.dateFilterInput} onPress={() => openDatePicker(field)}>
-                    <Text style={[styles.dateFilterValue, !val && styles.dateFilterPlaceholder]}>
-                      {formatFilterDateDisplay(val) || `Select ${label.toLowerCase()}`}
-                    </Text>
-                    <MaterialCommunityIcons name="calendar-month-outline" size={17} color="#64748B" />
+            {/* Filter panel */}
+            <View style={styles.filterPanel}>
+              <View style={styles.filterPanelHeader}>
+                <Text style={styles.filterPanelTitle}>Filters</Text>
+                {hasActiveFilters && (
+                  <TouchableOpacity style={styles.clearFiltersBtn} onPress={() => {
+                    setSearchQuery(''); setAppliedFromDate(''); setAppliedToDate('');
+                    setFromDate(''); setToDate('');
+                  }}>
+                    <Text style={styles.clearFiltersText}>Clear</Text>
                   </TouchableOpacity>
-                </View>
-              );
-            })}
-          </View>
-
-          <TouchableOpacity
-            style={[styles.applyBtn, !hasPendingChanges && styles.applyBtnDisabled]}
-            onPress={() => { setAppliedFromDate(fromDate); setAppliedToDate(toDate); }}
-            disabled={!hasPendingChanges}
-          >
-            <Text style={styles.applyBtnText}>Apply Filter</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {/* Summary + controls */}
-      {!loading && (
-        <View style={styles.summaryStrip}>
-          <View style={styles.summaryItem}>
-            <MaterialCommunityIcons name="receipt-text" size={18} color="#2563EB" />
-            <View style={{ marginLeft: 6 }}>
-              <Text style={styles.summaryValue}>{stats.count}</Text>
-              <Text style={styles.summaryLabel}>Payments</Text>
-            </View>
-          </View>
-          <View style={styles.summaryDivider} />
-          <View style={styles.summaryItem}>
-            <MaterialCommunityIcons name="currency-inr" size={18} color="#10B981" />
-            <View style={{ marginLeft: 6 }}>
-              <Text style={[styles.summaryValue, { color: '#10B981' }]}>Rs {fmtCurrency(stats.total)}</Text>
-              <Text style={styles.summaryLabel}>Total Amount</Text>
-            </View>
-          </View>
-          <View style={styles.summaryDivider} />
-          <View style={styles.summaryControls}>
-            <TouchableOpacity
-              style={styles.selectAllBtn}
-              onPress={selCount === filtered.length ? clearSelection : selectAll}
-            >
-              <MaterialCommunityIcons
-                name={selCount === filtered.length && filtered.length > 0 ? 'checkbox-multiple-marked' : 'checkbox-multiple-blank-outline'}
-                size={16}
-                color="#2563EB"
-              />
-              <Text style={styles.selectAllText}>
-                {selCount === filtered.length && filtered.length > 0 ? 'Deselect All' : 'Select All'}
-              </Text>
-            </TouchableOpacity>
-            {filtered.length > 0 && (
-              <TouchableOpacity
-                style={styles.printAllBtn}
-                onPress={handlePrintAll}
-                disabled={!!actionBusy}
-              >
-                {actionBusy === 'printall' ? (
-                  <ActivityIndicator size="small" color="#FFF" />
-                ) : (
-                  <>
-                    <MaterialCommunityIcons name="printer-outline" size={14} color="#FFF" />
-                    <Text style={styles.printAllText}>Print All</Text>
-                  </>
                 )}
+              </View>
+              <View style={styles.searchBar}>
+                <MaterialCommunityIcons name="magnify" size={18} color="#94A3B8" />
+                <TextInput
+                  style={styles.searchInput}
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  placeholder="Search by Name, Phone, Invoice No"
+                  placeholderTextColor="#94A3B8"
+                />
+                {!!searchQuery && (
+                  <TouchableOpacity onPress={() => setSearchQuery('')}>
+                    <MaterialCommunityIcons name="close-circle" size={18} color="#94A3B8" />
+                  </TouchableOpacity>
+                )}
+              </View>
+              <View style={styles.dateFilterRow}>
+                {(['from', 'to']).map((field) => {
+                  const val = field === 'from' ? fromDate : toDate;
+                  const label = field === 'from' ? 'From Date' : 'To Date';
+                  return (
+                    <View key={field} style={styles.dateFilterField}>
+                      <Text style={styles.dateFilterLabel}>{label}</Text>
+                      <TouchableOpacity style={styles.dateFilterInput} onPress={() => openDatePicker(field)}>
+                        <Text style={[styles.dateFilterValue, !val && styles.dateFilterPlaceholder]}>
+                          {formatFilterDateDisplay(val) || `Select ${label.toLowerCase()}`}
+                        </Text>
+                        <MaterialCommunityIcons name="calendar-month-outline" size={17} color="#64748B" />
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })}
+              </View>
+              <TouchableOpacity
+                style={[styles.applyBtn, !hasPendingChanges && styles.applyBtnDisabled]}
+                onPress={() => { setAppliedFromDate(fromDate); setAppliedToDate(toDate); }}
+                disabled={!hasPendingChanges}
+              >
+                <Text style={styles.applyBtnText}>Apply Filter</Text>
               </TouchableOpacity>
+            </View>
+
+            {/* Summary + controls */}
+            <View style={styles.summaryStrip}>
+              <View style={styles.summaryItem}>
+                <MaterialCommunityIcons name="receipt-text" size={18} color="#2563EB" />
+                <View style={{ marginLeft: 6 }}>
+                  <Text style={styles.summaryValue}>{stats.count}</Text>
+                  <Text style={styles.summaryLabel}>Payments</Text>
+                </View>
+              </View>
+              <View style={styles.summaryDivider} />
+              <View style={styles.summaryItem}>
+                <MaterialCommunityIcons name="currency-inr" size={18} color="#10B981" />
+                <View style={{ marginLeft: 6 }}>
+                  <Text style={[styles.summaryValue, { color: '#10B981' }]}>Rs {fmtCurrency(stats.total)}</Text>
+                  <Text style={styles.summaryLabel}>Total Amount</Text>
+                </View>
+              </View>
+              <View style={styles.summaryDivider} />
+              <View style={styles.summaryControls}>
+                <TouchableOpacity
+                  style={styles.selectAllBtn}
+                  onPress={selCount === filtered.length ? clearSelection : selectAll}
+                >
+                  <MaterialCommunityIcons
+                    name={selCount === filtered.length && filtered.length > 0 ? 'checkbox-multiple-marked' : 'checkbox-multiple-blank-outline'}
+                    size={16}
+                    color="#2563EB"
+                  />
+                  <Text style={styles.selectAllText}>
+                    {selCount === filtered.length && filtered.length > 0 ? 'Deselect All' : 'Select All'}
+                  </Text>
+                </TouchableOpacity>
+                {filtered.length > 0 && (
+                  <TouchableOpacity
+                    style={styles.printAllBtn}
+                    onPress={handlePrintAll}
+                    disabled={!!actionBusy}
+                  >
+                    {actionBusy === 'printall' ? (
+                      <ActivityIndicator size="small" color="#FFF" />
+                    ) : (
+                      <>
+                        <MaterialCommunityIcons name="printer-outline" size={14} color="#FFF" />
+                        <Text style={styles.printAllText}>Print All</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+
+            {filter === 'date' && !isEmpty && (
+              <View style={styles.dateTrackBanner}>
+                <MaterialCommunityIcons name="chart-timeline-variant" size={14} color="#2563EB" />
+                <Text style={styles.dateTrackText}>{activeDayCount} active day{activeDayCount !== 1 ? 's' : ''} tracked</Text>
+              </View>
             )}
           </View>
-        </View>
-      )}
-
-      {!loading && filter === 'date' && !isEmpty && (
-        <View style={styles.dateTrackBanner}>
-          <MaterialCommunityIcons name="chart-timeline-variant" size={14} color="#2563EB" />
-          <Text style={styles.dateTrackText}>{activeDayCount} active day{activeDayCount !== 1 ? 's' : ''} tracked</Text>
-        </View>
-      )}
-
-      {/* List */}
-      {loading ? (
-        <ActivityIndicator size="large" color="#2563EB" style={{ marginTop: 40 }} />
-      ) : isEmpty ? (
-        <View style={styles.emptyContainer}>
-          <MaterialCommunityIcons name="receipt-text-outline" size={60} color="#D1D5DB" />
-          <Text style={styles.emptyTitle}>
-            {filter === 'all' ? 'No payment history' : filter === 'date' ? 'No payments found' : `No payments this ${filter}`}
-          </Text>
-          <Text style={styles.emptySub}>
-            {filter === 'all' ? 'Saved payments will appear here' : 'Try switching to "All" to see all records'}
-          </Text>
-        </View>
-      ) : (
-        <FlatList
-          data={listData}
-          keyExtractor={listKeyExt}
-          renderItem={renderItem}
-          contentContainerStyle={[styles.list, selCount > 0 && { paddingBottom: 100 }]}
-          showsVerticalScrollIndicator={false}
-        />
-      )}
+        }
+        ListEmptyComponent={
+          loading ? (
+            <ActivityIndicator size="large" color="#2563EB" style={{ marginTop: 40 }} />
+          ) : (
+            <View style={styles.emptyContainer}>
+              <MaterialCommunityIcons name="receipt-text-outline" size={60} color="#D1D5DB" />
+              <Text style={styles.emptyTitle}>
+                {filter === 'all' ? 'No payment history' : filter === 'date' ? 'No payments found' : `No payments this ${filter}`}
+              </Text>
+              <Text style={styles.emptySub}>
+                {filter === 'all' ? 'Saved payments will appear here' : 'Try switching to "All" to see all records'}
+              </Text>
+            </View>
+          )
+        }
+      />
 
       {/* Bulk action bar */}
       {selCount > 0 && (
