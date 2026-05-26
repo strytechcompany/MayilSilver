@@ -507,7 +507,7 @@ export const deletePaymentRecord = async (id) => {
 
 export const updatePaymentRecord = async (id, payload) => {
   try {
-    return await postJSON(`${base_url}/payments/save`, { ...payload, paymentId: id });
+    return await putJSON(`${base_url}/payments/${id}`, payload);
   } catch (error) {
     console.error('updatePaymentRecord Error:', error);
     return { success: false, message: 'Network error' };

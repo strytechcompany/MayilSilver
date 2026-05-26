@@ -1375,6 +1375,7 @@ router.put('/payments/:id', async (req, res) => {
     if (!existing) return res.status(404).json({ success: false, message: 'Payment not found' });
 
     const {
+      invoiceNumber,
       customerId, customerName, phone, address, gstNo,
       itemName, items, cash, ftRate, weight,
       subtotal, cgst, sgst, roundOff, total,
@@ -1402,6 +1403,7 @@ router.put('/payments/:id', async (req, res) => {
     });
 
     Object.assign(existing, {
+      invoiceNumber: String(invoiceNumber || '').trim() || existing.invoiceNumber,
       status:       normalizedStatus,
       customerId:   customer?._id || existing.customerId,
       customerName: trimmedCustomerName,
