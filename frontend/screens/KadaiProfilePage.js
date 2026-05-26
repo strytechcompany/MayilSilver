@@ -264,6 +264,7 @@ const KadaiProfilePage = ({ navigation }) => {
               placeholder="Enter your invoice declaration…"
               multiline
               numberOfLines={4}
+              autoCapitalize="sentences"
             />
             <Field
               label="Footer Notes"
