@@ -22,8 +22,7 @@ export const toNum = (v, fb = 0) => {
 export const fmt = (v) =>
   toNum(v).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-export const fmtW = (v) =>
-  `${toNum(v).toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 })} gram`;
+export const fmtW = (v) => `${Number(toNum(v)).toFixed(1)}g`;
 
 export const fmtDate = (v) => {
   if (!v) return '-';
