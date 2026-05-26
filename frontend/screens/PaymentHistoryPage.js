@@ -124,6 +124,17 @@ const recordKey = (r) => r._id || r.invoiceNumber;
 
 const fmtDateDisplay = (iso) =>
   new Date(iso).toLocaleString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+const fmtCardDate = (r) => {
+  const dateStr = r.invoiceDate
+    ? new Date(r.invoiceDate).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })
+    : '';
+  const timeBase = r.updatedAt || r.createdAt;
+  const timeStr = timeBase
+    ? new Date(timeBase).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+    : '';
+  if (dateStr && timeStr) return `${dateStr}, ${timeStr}`;
+  return fmtDateDisplay(r.invoiceDate || r.updatedAt || r.createdAt);
+};
 const fmtDateFull = (iso) =>
   new Date(iso).toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
 const fmtCurrency = (n) =>
@@ -627,7 +638,7 @@ const PaymentHistoryPage = ({ navigation }) => {
         {/* Detail rows */}
         <View style={styles.detailRow}>
           <MaterialCommunityIcons name="clock-outline" size={12} color="#9CA3AF" />
-          <Text style={styles.detailText}>{fmtDateDisplay(recordDate(item))}</Text>
+          <Text style={styles.detailText}>{fmtCardDate(item)}</Text>
         </View>
         <View style={styles.detailRow}>
           <MaterialCommunityIcons name="cube-outline" size={12} color="#9CA3AF" />
