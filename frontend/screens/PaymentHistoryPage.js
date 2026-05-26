@@ -119,7 +119,7 @@ const weekStart = () => {
   return start;
 };
 const monthStart = () => { const now = new Date(); return new Date(now.getFullYear(), now.getMonth(), 1); };
-const recordDate = (r) => r.updatedAt || r.createdAt || r.invoiceDate;
+const recordDate = (r) => r.invoiceDate || r.updatedAt || r.createdAt;
 const recordKey = (r) => r._id || r.invoiceNumber;
 
 const fmtDateDisplay = (iso) =>
