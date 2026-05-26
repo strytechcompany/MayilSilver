@@ -723,18 +723,6 @@ const PaymentHistoryPage = ({ navigation }) => {
         contentContainerStyle={[styles.list, selCount > 0 && { paddingBottom: 120 }]}
         ListHeaderComponent={
           <View>
-            {/* Total Amount Banner */}
-            <View style={styles.totalBanner}>
-              <View>
-                <Text style={styles.totalBannerAmount}>₹ {fmtCurrency(stats.total)}</Text>
-                <Text style={styles.totalBannerLabel}>Total Amount{filter !== 'all' ? ' · Filtered' : ''}</Text>
-              </View>
-              <View style={styles.totalBannerRight}>
-                <MaterialCommunityIcons name="receipt-text" size={16} color="#8FA4B5" />
-                <Text style={styles.totalBannerCount}>{stats.count} bill{stats.count !== 1 ? 's' : ''}</Text>
-              </View>
-            </View>
-
             {/* Filter panel */}
             <View style={styles.filterPanel}>
               <View style={styles.filterPanelHeader}>
@@ -1404,33 +1392,6 @@ const styles = StyleSheet.create({
   statusPickerActive: { backgroundColor: '#1C2B3A', borderColor: '#1C2B3A' },
   statusPickerText: { fontSize: moderateScale(12), fontWeight: '700', color: '#475569' },
   statusPickerTextActive: { color: '#FFF' },
-
-  // Total amount banner
-  totalBanner: {
-    backgroundColor: '#1C2B3A',
-    marginHorizontal: horizontalPadding,
-    marginTop: 10,
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  totalBannerAmount: {
-    fontSize: moderateScale(22),
-    fontWeight: '900',
-    color: '#10B981',
-    letterSpacing: 0.3,
-  },
-  totalBannerLabel: {
-    fontSize: moderateScale(11),
-    color: '#8FA4B5',
-    fontWeight: '600',
-    marginTop: 2,
-  },
-  totalBannerRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  totalBannerCount: { fontSize: moderateScale(13), fontWeight: '700', color: '#94A3B8' },
 
   // Edit date button
   editDateBtn: {
