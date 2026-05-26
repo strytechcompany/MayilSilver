@@ -269,7 +269,7 @@ export const buildPaymentBillHtml = (tx, summary, settings, logoSrc = '', profil
   .banner     { background:#1C2B3A; color:#fff; padding:10px 14px 8px; border-bottom:3px solid #8FA4B5; }
   .banner-top { display:flex; justify-content:space-between; font-size:12px; font-weight:600; color:#A8BDC9; margin-bottom:6px; }
   .banner-mid { display:flex; justify-content:center; align-items:center; gap:12px; margin-bottom:5px; }
-  .banner-logo      { height:64px; width:auto; display:block; }
+  .banner-logo      { height:100px; width:auto; display:block; }
   .banner-name{ font-size:26px; font-weight:900; letter-spacing:2px; color:#FFF; text-transform:uppercase; }
   .banner-tag { text-align:center; font-size:12px; color:#8FA4B5; }
   .addr-strip { text-align:center; padding:7px 14px; background:#F5F7F9; border-bottom:1px solid #C8D4DC; font-size:13px; color:#445C6E; line-height:1.85; }
