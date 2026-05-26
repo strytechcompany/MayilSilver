@@ -22,6 +22,14 @@ import {
 import { horizontalPadding, moderateScale, spacing } from '../utils/responsive';
 
 
+const DATE_MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const DATE_WEEKDAY_LABELS = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+
+const todayIso = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
 const createEmptyForm = (invoiceNumber = '') => ({
   userName: '',
   phoneNumber: '',
@@ -31,6 +39,7 @@ const createEmptyForm = (invoiceNumber = '') => ({
   itemName: '',
   weight: '',
   cash: '',
+  invoiceDate: todayIso(),
 });
 
 const emptyCustomerForm = {
@@ -73,6 +82,8 @@ const PaymentPage = ({ navigation }) => {
   const [creatingCustomer, setCreatingCustomer] = useState(false);
   const [customerCreateForm, setCustomerCreateForm] = useState(emptyCustomerForm);
   const [extraItems, setExtraItems] = useState([]);
+  const [datePickerVisible, setDatePickerVisible] = useState(false);
+  const [pickerMonth, setPickerMonth] = useState(() => { const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), 1); });
 
   const prepareNextPaymentForm = useCallback(async () => {
     try {
@@ -275,6 +286,33 @@ const PaymentPage = ({ navigation }) => {
     void prepareNextPaymentForm();
   }, [prepareNextPaymentForm]);
 
+  const formatDateDisplay = (iso) => {
+    if (!iso) return '';
+    const [y, m, d] = iso.split('-');
+    return `${d}-${m}-${y}`;
+  };
+
+  const openDatePicker = () => {
+    const d = form.invoiceDate ? new Date(form.invoiceDate + 'T00:00:00') : new Date();
+    setPickerMonth(new Date(d.getFullYear(), d.getMonth(), 1));
+    setDatePickerVisible(true);
+  };
+
+  const pickerDays = useMemo(() => {
+    const y = pickerMonth.getFullYear(), mo = pickerMonth.getMonth();
+    const firstDay = new Date(y, mo, 1).getDay();
+    const daysInMo = new Date(y, mo + 1, 0).getDate();
+    const cells = [];
+    for (let i = 0; i < firstDay; i++) cells.push({ key: `e-${i}`, empty: true });
+    for (let d = 1; d <= daysInMo; d++) {
+      const iso = `${y}-${String(mo + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      cells.push({ key: iso, empty: false, label: d, iso });
+    }
+    return cells;
+  }, [pickerMonth]);
+
+  const pickerMonthLabel = `${DATE_MONTH_NAMES[pickerMonth.getMonth()]} ${pickerMonth.getFullYear()}`;
+
   const handleCustomerNameChange = (value) => {
     setField('userName', value);
     setShowSuggestions(true);
@@ -436,7 +474,9 @@ const PaymentPage = ({ navigation }) => {
       sgst: summary.sgst,
       roundOff: summary.roundOff,
       total: summary.grandTotal,
-      invoiceDate: new Date().toISOString(),
+      invoiceDate: form.invoiceDate
+        ? new Date(form.invoiceDate + 'T00:00:00').toISOString()
+        : new Date().toISOString(),
     };
 
     const response = await savePaymentRecord(payload);
@@ -624,6 +664,14 @@ const PaymentPage = ({ navigation }) => {
                 </Text>
               )}
             </FormField>
+            <FormField label="Bill Date">
+              <TouchableOpacity style={[styles.input, styles.dateInput]} onPress={openDatePicker} activeOpacity={0.8}>
+                <Text style={styles.dateInputText}>
+                  {formatDateDisplay(form.invoiceDate) || 'Select date'}
+                </Text>
+                <MaterialCommunityIcons name="calendar-month-outline" size={18} color="#64748B" />
+              </TouchableOpacity>
+            </FormField>
           </View>
 
           <View style={styles.card}>
@@ -807,6 +855,50 @@ const PaymentPage = ({ navigation }) => {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <Modal visible={datePickerVisible} transparent animationType="fade" onRequestClose={() => setDatePickerVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.datePickerCard}>
+            <View style={styles.datePickerHeader}>
+              <Text style={styles.datePickerTitle}>Select Bill Date</Text>
+              <TouchableOpacity onPress={() => setDatePickerVisible(false)}>
+                <MaterialCommunityIcons name="close" size={20} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.datePickerMonthRow}>
+              <TouchableOpacity style={styles.datePickerNavBtn}
+                onPress={() => setPickerMonth((p) => new Date(p.getFullYear(), p.getMonth() - 1, 1))}>
+                <MaterialCommunityIcons name="chevron-left" size={20} color="#1C2B3A" />
+              </TouchableOpacity>
+              <Text style={styles.datePickerMonthText}>{pickerMonthLabel}</Text>
+              <TouchableOpacity style={styles.datePickerNavBtn}
+                onPress={() => setPickerMonth((p) => new Date(p.getFullYear(), p.getMonth() + 1, 1))}>
+                <MaterialCommunityIcons name="chevron-right" size={20} color="#1C2B3A" />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.dpWeekdayRow}>
+              {DATE_WEEKDAY_LABELS.map((l) => (
+                <Text key={l} style={styles.dpWeekdayText}>{l}</Text>
+              ))}
+            </View>
+            <View style={styles.dpDaysGrid}>
+              {pickerDays.map((cell) => {
+                if (cell.empty) return <View key={cell.key} style={styles.dpDayCell} />;
+                const isSelected = cell.iso === form.invoiceDate;
+                return (
+                  <TouchableOpacity
+                    key={cell.key}
+                    style={[styles.dpDayCell, styles.dpDayBtn, isSelected && styles.dpDayBtnActive]}
+                    onPress={() => { setField('invoiceDate', cell.iso); setDatePickerVisible(false); }}
+                  >
+                    <Text style={[styles.dpDayText, isSelected && styles.dpDayTextActive]}>{cell.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <Modal
         visible={showCreateCustomerModal}
@@ -1388,6 +1480,60 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: moderateScale(13),
   },
+
+  // Date input field
+  dateInput: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  dateInputText: {
+    fontSize: moderateScale(14),
+    color: '#111827',
+    fontWeight: '600',
+  },
+
+  // Date picker modal
+  datePickerCard: {
+    backgroundColor: '#FFF',
+    borderRadius: 18,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  datePickerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
+  },
+  datePickerTitle: { fontSize: moderateScale(15), fontWeight: '800', color: '#0F172A' },
+  datePickerMonthRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+  },
+  datePickerNavBtn: {
+    width: 34, height: 34, borderRadius: 17,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: '#F1F5F9',
+  },
+  datePickerMonthText: { fontSize: moderateScale(14), fontWeight: '700', color: '#1C2B3A' },
+  dpWeekdayRow: { flexDirection: 'row', marginBottom: 8 },
+  dpWeekdayText: {
+    width: `${100 / 7}%`,
+    textAlign: 'center',
+    color: '#94A3B8',
+    fontSize: moderateScale(11),
+    fontWeight: '700',
+  },
+  dpDaysGrid: { flexDirection: 'row', flexWrap: 'wrap' },
+  dpDayCell: { width: `${100 / 7}%`, height: 40, alignItems: 'center', justifyContent: 'center' },
+  dpDayBtn: { borderRadius: 10 },
+  dpDayBtnActive: { backgroundColor: '#1C2B3A' },
+  dpDayText: { fontSize: moderateScale(13), color: '#1C2B3A', fontWeight: '600' },
+  dpDayTextActive: { color: '#FFF' },
 });
 
 export default PaymentPage;

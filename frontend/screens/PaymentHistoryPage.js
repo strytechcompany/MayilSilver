@@ -269,7 +269,12 @@ const PaymentHistoryPage = ({ navigation }) => {
         return [r.customerName, r.phone, r.invoiceNumber]
           .some((f) => String(f || '').toLowerCase().includes(q));
       })
-      .sort((a, b) => new Date(recordDate(b)) - new Date(recordDate(a)));
+      .sort((a, b) => {
+        const na = parseInt(a.invoiceNumber, 10) || 0;
+        const nb = parseInt(b.invoiceNumber, 10) || 0;
+        if (nb !== na) return nb - na;
+        return new Date(recordDate(b)) - new Date(recordDate(a));
+      });
   }, [history, filter, appliedFromDate, appliedToDate, searchQuery]);
 
   const stats = useMemo(() => ({
