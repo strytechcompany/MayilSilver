@@ -694,7 +694,7 @@ const PaymentHistoryPage = ({ navigation }) => {
     <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
       <Header
         title="Payment History"
-        subtitle={loading ? '' : `${history.length} total record${history.length !== 1 ? 's' : ''}`}
+        subtitle={loading ? '' : `${stats.count} record${stats.count !== 1 ? 's' : ''}  ·  ₹${fmtCurrency(stats.total)}`}
         showBack
         onBackPress={() => navigation.goBack()}
       />
@@ -784,14 +784,6 @@ const PaymentHistoryPage = ({ navigation }) => {
                 <View style={{ marginLeft: 6 }}>
                   <Text style={styles.summaryValue}>{stats.count}</Text>
                   <Text style={styles.summaryLabel}>Payments</Text>
-                </View>
-              </View>
-              <View style={styles.summaryDivider} />
-              <View style={styles.summaryItem}>
-                <MaterialCommunityIcons name="currency-inr" size={18} color="#10B981" />
-                <View style={{ marginLeft: 6 }}>
-                  <Text style={[styles.summaryValue, { color: '#10B981' }]}>Rs {fmtCurrency(stats.total)}</Text>
-                  <Text style={styles.summaryLabel}>Total Amount</Text>
                 </View>
               </View>
               <View style={styles.summaryDivider} />
