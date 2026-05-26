@@ -263,14 +263,14 @@ export const buildPaymentBillHtml = (tx, summary, settings, logoSrc = '', profil
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: Arial, Helvetica, sans-serif; font-size: 13.5px; color: #1A2A38; background: #fff; }
   .invoice { border: 1.5px solid #97A8B5; }
-  .top-strip { display:flex; justify-content:space-between; align-items:center; padding:6px 14px; background:#EEF2F5; border-bottom:1.5px solid #97A8B5; }
-  .top-title  { font-size:16px; font-weight:800; letter-spacing:.8px; color:#1C2B3A; }
+  .top-strip { display:flex; justify-content:space-between; align-items:center; padding:6px 14px; background:#EEF2F5; border-bottom:1.5px solid #97A8B5; position:relative; }
+  .top-title  { position:absolute; left:50%; transform:translateX(-50%); font-size:16px; font-weight:800; letter-spacing:.8px; color:#1C2B3A; white-space:nowrap; }
   .top-orig   { font-size:11.5px; font-weight:700; color:#445C6E; }
   .banner     { background:#1C2B3A; color:#fff; padding:10px 14px 8px; border-bottom:3px solid #8FA4B5; }
   .banner-top { display:flex; justify-content:space-between; font-size:12px; font-weight:600; color:#A8BDC9; margin-bottom:6px; }
   .banner-mid { display:flex; justify-content:center; align-items:center; gap:12px; margin-bottom:5px; }
-  .banner-logo      { width:125px; height:auto; display:block; }
-  .banner-name{ font-size:34px; font-weight:900; letter-spacing:2px; color:#FFF; text-transform:uppercase; }
+  .banner-logo      { height:48px; width:auto; display:block; }
+  .banner-name{ font-size:26px; font-weight:900; letter-spacing:2px; color:#FFF; text-transform:uppercase; }
   .banner-tag { text-align:center; font-size:12px; color:#8FA4B5; }
   .addr-strip { text-align:center; padding:7px 14px; background:#F5F7F9; border-bottom:1px solid #C8D4DC; font-size:13px; color:#445C6E; line-height:1.85; }
   .details-grid { display:grid; grid-template-columns:1.1fr 1fr; border-bottom:1px solid #C8D4DC; }
@@ -322,7 +322,8 @@ export const buildPaymentBillHtml = (tx, summary, settings, logoSrc = '', profil
 <div class="invoice">
 
   <div class="top-strip">
-    <span class="top-title">Payment Receipt</span>
+    <span></span>
+    <span class="top-title">Cash Invoice</span>
     <span class="top-orig">ORIGINAL FOR RECIPIENT</span>
   </div>
 
@@ -420,11 +421,6 @@ export const buildPaymentBillHtml = (tx, summary, settings, logoSrc = '', profil
     </div>
   </div>
 
-  <div class="bottom-bar">
-    <div class="bb-cell"><span class="bb-lbl">Sales Value</span><span>:</span><span class="bb-val">${fmt(summary.grandTotal)}</span></div>
-    <div class="bb-cell mid"><span class="bb-lbl">Purchase Value</span><span>:</span><span class="bb-val">&nbsp;</span></div>
-    <div class="bb-cell right"><span class="bb-lbl">Receivable Amount:</span><span class="bb-val">${fmt(summary.grandTotal)}</span></div>
-  </div>
 
 </div>
 </body>
