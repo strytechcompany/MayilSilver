@@ -401,7 +401,6 @@ const PaymentPage = ({ navigation }) => {
 
   const validateForm = () => {
     if (!form.userName.trim()) { Alert.alert('Required', 'Enter customer name'); return false; }
-    if (!form.phoneNumber.trim()) { Alert.alert('Required', 'Enter phone number'); return false; }
     if (!form.itemName.trim()) { Alert.alert('Required', 'Enter item name'); return false; }
     if (!form.invoiceNumber.trim()) { Alert.alert('Required', 'Enter invoice number'); return false; }
     if (!form.weight || Number.isNaN(Number(form.weight)) || Number(form.weight) <= 0) {
