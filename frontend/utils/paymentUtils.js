@@ -268,13 +268,10 @@ export const buildPaymentBillHtml = (tx, summary, settings, logoSrc = '', profil
   .top-orig   { font-size:11.5px; font-weight:700; color:#445C6E; }
   .banner     { background:#1C2B3A; color:#fff; padding:10px 14px 8px; border-bottom:3px solid #8FA4B5; }
   .banner-top { display:flex; justify-content:space-between; font-size:12px; font-weight:600; color:#A8BDC9; margin-bottom:6px; }
-  .banner-mid { display:flex; align-items:center; margin-bottom:5px; }
-  .banner-left { flex:1; display:flex; align-items:center; }
-  .banner-center { flex:2; display:flex; flex-direction:column; align-items:center; }
-  .banner-right { flex:1; }
+  .banner-mid { display:flex; justify-content:center; align-items:center; gap:12px; margin-bottom:5px; }
   .banner-logo { height:100px; width:auto; display:block; }
   .banner-name { font-size:26px; font-weight:900; letter-spacing:2px; color:#FFF; text-transform:uppercase; }
-  .banner-tag { text-align:center; font-size:12px; color:#8FA4B5; margin-top:3px; }
+  .banner-tag { text-align:center; font-size:12px; color:#8FA4B5; }
   .addr-strip { text-align:center; padding:7px 14px; background:#F5F7F9; border-bottom:1px solid #C8D4DC; font-size:13px; color:#445C6E; line-height:1.85; }
   .details-grid { display:grid; grid-template-columns:1.1fr 1fr; border-bottom:1px solid #C8D4DC; }
   .detail-box   { padding:11px 13px; background:#FFF; }
@@ -336,15 +333,10 @@ export const buildPaymentBillHtml = (tx, summary, settings, logoSrc = '', profil
       <span>${esc(profile.phone || '')}${profile.altPhone ? ` / ${esc(profile.altPhone)}` : ''}</span>
     </div>
     <div class="banner-mid">
-      <div class="banner-left">
-        ${logoSrc ? `<img src="${logoSrc}" alt="Logo" class="banner-logo"/>` : ''}
-      </div>
-      <div class="banner-center">
-        <span class="banner-name">${esc(profile.name || '')}</span>
-        <div class="banner-tag">${esc(profile.tagline || '')}</div>
-      </div>
-      <div class="banner-right"></div>
+      ${logoSrc ? `<img src="${logoSrc}" alt="Logo" class="banner-logo"/>` : ''}
+      <span class="banner-name">${esc(profile.name || '')}</span>
     </div>
+    <div class="banner-tag">${esc(profile.tagline || '')}</div>
   </div>
 
   <div class="addr-strip">
