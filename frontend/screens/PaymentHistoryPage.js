@@ -707,6 +707,8 @@ const PaymentHistoryPage = ({ navigation }) => {
         }
         showBack
         onBackPress={() => navigation.goBack()}
+        rightIcon="refresh"
+        onRightPress={refresh}
       />
 
       {/* Filter tabs */}
