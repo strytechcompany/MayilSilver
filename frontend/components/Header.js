@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { horizontalPadding, moderateScale, spacing } from '../utils/responsive';
 
-const Header = ({ title, subtitle, rightIcon, onRightPress, showBack, onBackPress }) => {
+const Header = ({ title, subtitle, subtitleNode, rightIcon, onRightPress, showBack, onBackPress }) => {
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <View style={styles.container}>
@@ -16,7 +16,7 @@ const Header = ({ title, subtitle, rightIcon, onRightPress, showBack, onBackPres
           )}
           <View>
             <Text style={styles.title}>{title}</Text>
-            {subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
+            {subtitleNode ? subtitleNode : subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
           </View>
         </View>
         

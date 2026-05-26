@@ -694,7 +694,17 @@ const PaymentHistoryPage = ({ navigation }) => {
     <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
       <Header
         title="Payment History"
-        subtitle={loading ? '' : `${stats.count} record${stats.count !== 1 ? 's' : ''}  ·  ₹${fmtCurrency(stats.total)}`}
+        subtitleNode={
+          loading ? null : (
+            <View style={styles.headerSubtitle}>
+              <Text style={styles.headerSubCount}>
+                {stats.count} record{stats.count !== 1 ? 's' : ''}
+              </Text>
+              <Text style={styles.headerSubDot}>·</Text>
+              <Text style={styles.headerSubAmount}>₹{fmtCurrency(stats.total)}</Text>
+            </View>
+          )
+        }
         showBack
         onBackPress={() => navigation.goBack()}
       />
@@ -1128,6 +1138,11 @@ const PaymentHistoryPage = ({ navigation }) => {
 // ── Styles ────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8FAFC' },
+
+  headerSubtitle: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 },
+  headerSubCount: { fontSize: moderateScale(12), color: '#6B7280', fontWeight: '500' },
+  headerSubDot:   { fontSize: moderateScale(12), color: '#CBD5E1', fontWeight: '400' },
+  headerSubAmount: { fontSize: moderateScale(13), color: '#10B981', fontWeight: '800' },
 
   tabRow: {
     flexDirection: 'row', paddingHorizontal: horizontalPadding,
