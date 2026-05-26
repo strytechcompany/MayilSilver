@@ -323,7 +323,7 @@ export const buildPaymentBillHtml = (tx, summary, settings, logoSrc = '', profil
 
   <div class="top-strip">
     <span></span>
-    <span class="top-title">Cash Invoice</span>
+    <span class="top-title">Tax Invoice</span>
     <span class="top-orig">ORIGINAL FOR RECIPIENT</span>
   </div>
 
