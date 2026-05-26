@@ -745,7 +745,7 @@ const PaymentPage = ({ navigation }) => {
                 <FormField label="Weight (g)">
                   <TextInput
                     style={[styles.input, styles.readonlyInput]}
-                    value={form.weight ? `${Number(form.weight).toFixed(1)}g` : ''}
+                    value={form.weight ? Number(form.weight).toFixed(1) : ''}
                     placeholder="Auto calculated"
                     placeholderTextColor="#9CA3AF"
                     editable={false}
@@ -1033,7 +1033,7 @@ const ExtraItemRow = ({ item, index, onUpdate, onRemove }) => (
         <Text style={styles.extraLabel}>Weight (g)</Text>
         <TextInput
           style={[styles.extraInput, styles.extraReadonly]}
-          value={item.weight ? `${Number(item.weight).toFixed(1)}g` : ''}
+          value={item.weight ? Number(item.weight).toFixed(1) : ''}
           editable={false}
           placeholder="Auto"
           placeholderTextColor="#9CA3AF"
