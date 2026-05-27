@@ -266,11 +266,12 @@ export const buildPaymentBillHtml = (tx, summary, settings, logoSrc = '', profil
   .top-strip { display:flex; justify-content:space-between; align-items:center; padding:6px 14px; background:#EEF2F5; border-bottom:1.5px solid #97A8B5; position:relative; }
   .top-title  { position:absolute; left:50%; transform:translateX(-50%); font-size:16px; font-weight:800; letter-spacing:.8px; color:#1C2B3A; white-space:nowrap; }
   .top-orig   { font-size:11.5px; font-weight:700; color:#445C6E; }
-  .banner     { background:#1C2B3A; color:#fff; padding:10px 14px 8px; border-bottom:3px solid #8FA4B5; }
-  .banner-top { display:flex; justify-content:space-between; font-size:12px; font-weight:600; color:#A8BDC9; margin-bottom:6px; }
-  .banner-mid { display:flex; justify-content:center; align-items:center; gap:12px; margin-bottom:5px; }
-  .banner-logo { height:100px; width:auto; display:block; }
-  .banner-name { font-size:26px; font-weight:900; letter-spacing:2px; color:#FFF; text-transform:uppercase; }
+  .banner     { background:#1C2B3A; color:#fff; padding:12px 14px 10px; border-bottom:3px solid #8FA4B5; }
+  .banner-top { display:flex; justify-content:space-between; font-size:12px; font-weight:600; color:#A8BDC9; margin-bottom:8px; }
+  .banner-mid { display:flex; align-items:center; margin-bottom:6px; }
+  .banner-logo-wrap { width:75px; flex-shrink:0; }
+  .banner-logo { height:62px; width:auto; display:block; }
+  .banner-name { flex:1; font-size:27px; font-weight:900; letter-spacing:2px; color:#FFF; text-transform:uppercase; text-align:center; }
   .banner-tag { text-align:center; font-size:12px; color:#8FA4B5; }
   .addr-strip { text-align:center; padding:7px 14px; background:#F5F7F9; border-bottom:1px solid #C8D4DC; font-size:13px; color:#445C6E; line-height:1.85; }
   .details-grid { display:grid; grid-template-columns:1.1fr 1fr; border-bottom:1px solid #C8D4DC; }
@@ -333,8 +334,11 @@ export const buildPaymentBillHtml = (tx, summary, settings, logoSrc = '', profil
       <span>${esc(profile.phone || '')}${profile.altPhone ? ` / ${esc(profile.altPhone)}` : ''}</span>
     </div>
     <div class="banner-mid">
-      ${logoSrc ? `<img src="${logoSrc}" alt="Logo" class="banner-logo"/>` : ''}
+      <div class="banner-logo-wrap">
+        ${logoSrc ? `<img src="${logoSrc}" alt="Logo" class="banner-logo"/>` : ''}
+      </div>
       <span class="banner-name">${esc(profile.name || '')}</span>
+      <div class="banner-logo-wrap"></div>
     </div>
     <div class="banner-tag">${esc(profile.tagline || '')}</div>
   </div>

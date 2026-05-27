@@ -56,8 +56,8 @@ const buildRecordHtml = (record, gstSettings, logoSrc, shopHtmlProfile) => {
 const MOBILE_PREVIEW_CSS = `<style>
   @page { size: auto !important; margin: 2mm !important; }
   html, body { width: 100% !important; max-width: 100% !important; overflow-x: hidden !important; }
-  .banner-logo { width: 55px !important; height: auto !important; }
-  .banner-name { font-size: 18px !important; letter-spacing: 0.5px !important; }
+  .banner-mid { display:flex !important; align-items:center !important; }
+  .banner-name { font-size: 20px !important; letter-spacing: 0.5px !important; text-align:center !important; }
   .banner-top { font-size: 10px !important; }
   .addr-strip { font-size: 11px !important; padding: 5px 8px !important; }
   .details-grid { display: flex !important; flex-direction: column !important; }
@@ -488,6 +488,7 @@ const PaymentHistoryPage = ({ navigation }) => {
     setEditForm({
       customerName:  record.customerName  || '',
       phone:         record.phone         || '',
+      gstNo:         record.gstNo         || '',
       itemName:      record.itemName      || '',
       weight:        String(record.weight || ''),
       ftRate:        String(record.ftRate || ''),
@@ -516,6 +517,7 @@ const PaymentHistoryPage = ({ navigation }) => {
       const payload = {
         customerName:  editForm.customerName.trim(),
         phone:         editForm.phone.trim(),
+        gstNo:         editForm.gstNo.trim(),
         itemName:      editForm.itemName.trim(),
         weight:        weightNum,
         ftRate:        parseFloat(editForm.ftRate) || 0,
@@ -957,9 +959,10 @@ const PaymentHistoryPage = ({ navigation }) => {
 
               <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
                 {[
-                  { key: 'customerName',  label: 'Customer Name', placeholder: 'Customer name',  keyboard: 'default' },
-                  { key: 'phone',         label: 'Phone',         placeholder: 'Phone number',   keyboard: 'phone-pad' },
-                  { key: 'invoiceNumber', label: 'Invoice No',    placeholder: 'Invoice number', keyboard: 'default' },
+                  { key: 'customerName',  label: 'Customer Name', placeholder: 'Customer name',        keyboard: 'default' },
+                  { key: 'phone',         label: 'Phone',         placeholder: 'Phone number',         keyboard: 'phone-pad' },
+                  { key: 'gstNo',         label: 'GST Number',    placeholder: 'GST number (optional)', keyboard: 'default' },
+                  { key: 'invoiceNumber', label: 'Invoice No',    placeholder: 'Invoice number',       keyboard: 'default' },
                   { key: 'itemName',      label: 'Item',          placeholder: 'Item name',      keyboard: 'default' },
                   { key: 'weight',        label: 'Weight (g)',    placeholder: '0',              keyboard: 'numeric' },
                   { key: 'ftRate',        label: 'Silver Rate',   placeholder: '0',              keyboard: 'numeric' },
