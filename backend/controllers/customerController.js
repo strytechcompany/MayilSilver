@@ -120,10 +120,23 @@ const updateCustomer = async (req, res) => {
   }
 };
 
+const deleteCustomer = async (req, res) => {
+  try {
+    const deleted = await Customer.findByIdAndDelete(req.params.id);
+    if (!deleted) {
+      return res.status(404).json({ success: false, message: 'Customer not found' });
+    }
+    res.json({ success: true, message: 'Customer deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 module.exports = {
   createCustomer,
   createCustomerFromWorkflow,
   getAllCustomers,
   getCustomerById,
   updateCustomer,
+  deleteCustomer,
 };

@@ -137,17 +137,17 @@ const CustomerDataListPage = ({ navigation }) => {
   const handleDeleteCustomer = useCallback((customer) => {
     Alert.alert(
       'Delete Customer',
-      `Delete "${customer.customerName}"? This will remove the customer from MongoDB.`,
+      `Delete "${customer.customerName}"? This will permanently remove the customer.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
+            setCustomers((prev) => prev.filter((c) => c._id !== customer._id));
             const res = await deleteCustomer(customer._id);
-            if (res?.success) {
+            if (!res?.success) {
               loadCustomers();
-            } else {
               Alert.alert('Error', res?.message || 'Failed to delete customer.');
             }
           },

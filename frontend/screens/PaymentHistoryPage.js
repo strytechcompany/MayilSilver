@@ -387,7 +387,9 @@ const PaymentHistoryPage = ({ navigation }) => {
   const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
 
   const getSelectedRecords = useCallback(() =>
-    filtered.filter((r) => selectedIds.has(recordKey(r))),
+    filtered
+      .filter((r) => selectedIds.has(recordKey(r)))
+      .sort((a, b) => (parseInt(a.invoiceNumber, 10) || 0) - (parseInt(b.invoiceNumber, 10) || 0)),
   [filtered, selectedIds]);
 
   // ── Action handlers ───────────────────────────────────────
@@ -553,7 +555,10 @@ const PaymentHistoryPage = ({ navigation }) => {
   const handleBulkPrint     = () => handlePrint(getSelectedRecords(), 'bulk-print');
   const handleBulkDownload  = () => handleDownload(getSelectedRecords(), 'bulk-download');
   const handleBulkWhatsApp  = () => handleWhatsApp(getSelectedRecords(), 'bulk-whatsapp');
-  const handlePrintAll      = () => handlePrint(filtered, 'printall');
+  const handlePrintAll      = () => {
+    const ascending = [...filtered].sort((a, b) => (parseInt(a.invoiceNumber, 10) || 0) - (parseInt(b.invoiceNumber, 10) || 0));
+    handlePrint(ascending, 'printall');
+  };
 
   // Preview modal actions (re-use cached previewHtml)
   const handlePreviewPrint = async () => {
