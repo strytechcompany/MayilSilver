@@ -53,8 +53,28 @@ const loadLogoSrc = async (profile) => {
   return loadLogoFallback();
 };
 
+// ── Signature helper ──────────────────────────────────────────
+const loadSignatureSrc = async (profile) => {
+  if (profile?.signatureUrl) {
+    try {
+      const fullUrl = profile.signatureUrl.startsWith('http')
+        ? profile.signatureUrl
+        : `${BACKEND_URL}${profile.signatureUrl}`;
+      const cacheFile = `${FileSystem.cacheDirectory}history_signature_pdf.png`;
+      const { uri: dl } = await FileSystem.downloadAsync(fullUrl, cacheFile);
+      const base64 = await FileSystem.readAsStringAsync(dl, { encoding: 'base64' });
+      if (base64) return `data:image/png;base64,${base64}`;
+    } catch {}
+  }
+  if (profile?.signatureBase64) {
+    const b = profile.signatureBase64;
+    if (b) return b.startsWith('data:') ? b : `data:image/png;base64,${b}`;
+  }
+  return '';
+};
+
 // ── Combined HTML builder ─────────────────────────────────────
-const buildRecordHtml = (record, gstSettings, logoSrc, shopHtmlProfile) => {
+const buildRecordHtml = (record, gstSettings, logoSrc, shopHtmlProfile, signatureSrc) => {
   const summary = buildSummary(record.cash, record.weight, gstSettings);
   summary.rows[0].particular = record.itemName || 'SILVER ARTICLES';
   const silverRate = parseFloat(record.ftRate) || 0;
@@ -67,7 +87,7 @@ const buildRecordHtml = (record, gstSettings, logoSrc, shopHtmlProfile) => {
     invoiceNumber: record.invoiceNumber,
     invoiceDate: record.invoiceDate || record.updatedAt || record.createdAt,
   };
-  return buildPaymentBillHtml(tx, summary, gstSettings, logoSrc, shopHtmlProfile);
+  return buildPaymentBillHtml(tx, summary, gstSettings, logoSrc, shopHtmlProfile, signatureSrc);
 };
 
 const MOBILE_PREVIEW_CSS = `<style>
@@ -95,17 +115,17 @@ const MOBILE_PREVIEW_CSS = `<style>
   .words-body { font-size: 13px !important; }
 </style>`;
 
-const buildCombinedHtml = (records, gstSettings, logoSrc, shopHtmlProfile, forPreview = false) => {
+const buildCombinedHtml = (records, gstSettings, logoSrc, shopHtmlProfile, signatureSrc, forPreview = false) => {
   if (!records.length) return '<html><body><p>No bills selected.</p></body></html>';
   const headInject = forPreview
     ? `<meta name="viewport" content="width=device-width, initial-scale=1.0">${MOBILE_PREVIEW_CSS}`
     : '<meta name="viewport" content="width=device-width, initial-scale=1.0">';
   if (records.length === 1) {
-    const html = buildRecordHtml(records[0], gstSettings, logoSrc, shopHtmlProfile);
+    const html = buildRecordHtml(records[0], gstSettings, logoSrc, shopHtmlProfile, signatureSrc);
     return html.replace('<head>', `<head>${headInject}`);
   }
 
-  const htmlParts = records.map((r) => buildRecordHtml(r, gstSettings, logoSrc, shopHtmlProfile));
+  const htmlParts = records.map((r) => buildRecordHtml(r, gstSettings, logoSrc, shopHtmlProfile, signatureSrc));
   const bodies = htmlParts.map((html) => {
     const m = html.match(/<body[^>]*>([\s\S]*?)<\/body\s*>/i);
     return m ? m[1].trim() : html;
@@ -199,6 +219,7 @@ const PaymentHistoryPage = ({ navigation }) => {
   const cachedProfile     = useRef(null);
   const cachedGstSettings = useRef(null);
   const cachedLogoSrc     = useRef('');
+  const cachedSignatureSrc = useRef('');
 
   // ── Data loading ──────────────────────────────────────────
   const refresh = useCallback(async () => {
@@ -224,6 +245,7 @@ const PaymentHistoryPage = ({ navigation }) => {
       cachedProfile.current     = profile;
       cachedGstSettings.current = settings;
       cachedLogoSrc.current     = await loadLogoSrc(profile);
+      cachedSignatureSrc.current = await loadSignatureSrc(profile);
     });
   }, []);
 
@@ -234,14 +256,17 @@ const PaymentHistoryPage = ({ navigation }) => {
         profile: cachedProfile.current,
         gstSettings: cachedGstSettings.current,
         logoSrc: cachedLogoSrc.current,
+        signatureSrc: cachedSignatureSrc.current,
       };
     }
     const [profile, gstSettings] = await Promise.all([loadShopProfile(), loadGstSettings()]);
     const logoSrc = await loadLogoSrc(profile);
+    const signatureSrc = await loadSignatureSrc(profile);
     cachedProfile.current     = profile;
     cachedGstSettings.current = gstSettings;
     cachedLogoSrc.current     = logoSrc;
-    return { profile, gstSettings, logoSrc };
+    cachedSignatureSrc.current = signatureSrc;
+    return { profile, gstSettings, logoSrc, signatureSrc };
   }, []);
 
   const getShopHtmlProfile = (profile) => ({
@@ -367,8 +392,8 @@ const PaymentHistoryPage = ({ navigation }) => {
     if (!records.length) return;
     setActionBusy(busyKey);
     try {
-      const { profile, gstSettings, logoSrc } = await getSettings();
-      const html = buildCombinedHtml(records, gstSettings, logoSrc, getShopHtmlProfile(profile), true);
+      const { profile, gstSettings, logoSrc, signatureSrc } = await getSettings();
+      const html = buildCombinedHtml(records, gstSettings, logoSrc, getShopHtmlProfile(profile), signatureSrc, true);
       setPreviewHtml(html);
       setPreviewCount(records.length);
       setPreviewVisible(true);
@@ -383,8 +408,8 @@ const PaymentHistoryPage = ({ navigation }) => {
     if (!records.length) return;
     setActionBusy(busyKey);
     try {
-      const { profile, gstSettings, logoSrc } = await getSettings();
-      const html = buildCombinedHtml(records, gstSettings, logoSrc, getShopHtmlProfile(profile), false);
+      const { profile, gstSettings, logoSrc, signatureSrc } = await getSettings();
+      const html = buildCombinedHtml(records, gstSettings, logoSrc, getShopHtmlProfile(profile), signatureSrc, false);
       await Print.printAsync({ html });
     } catch (e) {
       Alert.alert('Print Error', e?.message || 'Failed to print.');
@@ -397,8 +422,8 @@ const PaymentHistoryPage = ({ navigation }) => {
     if (!records.length) return;
     setActionBusy(busyKey);
     try {
-      const { profile, gstSettings, logoSrc } = await getSettings();
-      const html = buildCombinedHtml(records, gstSettings, logoSrc, getShopHtmlProfile(profile), false);
+      const { profile, gstSettings, logoSrc, signatureSrc } = await getSettings();
+      const html = buildCombinedHtml(records, gstSettings, logoSrc, getShopHtmlProfile(profile), signatureSrc, false);
       const { uri } = await Print.printToFileAsync({ html, base64: false });
       const ok = await Sharing.isAvailableAsync();
       if (ok) {
@@ -417,8 +442,8 @@ const PaymentHistoryPage = ({ navigation }) => {
     if (!records.length) return;
     setActionBusy(busyKey);
     try {
-      const { profile, gstSettings, logoSrc } = await getSettings();
-      const html = buildCombinedHtml(records, gstSettings, logoSrc, getShopHtmlProfile(profile), false);
+      const { profile, gstSettings, logoSrc, signatureSrc } = await getSettings();
+      const html = buildCombinedHtml(records, gstSettings, logoSrc, getShopHtmlProfile(profile), signatureSrc, false);
       const { uri } = await Print.printToFileAsync({ html, base64: false });
       const ok = await Sharing.isAvailableAsync();
       if (ok) {
@@ -562,6 +587,13 @@ const PaymentHistoryPage = ({ navigation }) => {
 
         {/* Action buttons */}
         <View style={styles.cardActions}>
+          <TouchableOpacity
+            style={styles.editIconBtn}
+            onPress={() => navigation.navigate('Payment', { editPayment: item })}
+            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+          >
+            <MaterialCommunityIcons name="pencil-outline" size={15} color="#2563EB" />
+          </TouchableOpacity>
           <ActionBtn icon="eye-outline"   label="View"  color="#2563EB" bgColor="#EFF6FF" borderColor="#BFDBFE"
             onPress={() => handleView([item], `view-${id}`)}   busy={isBusy('view')} />
           <ActionBtn icon="printer-outline" label="Print" color="#059669" bgColor="#ECFDF5" borderColor="#A7F3D0"
@@ -608,7 +640,7 @@ const PaymentHistoryPage = ({ navigation }) => {
     <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
       <Header
         title="Payment History"
-        subtitle={loading ? '' : `${history.length} total record${history.length !== 1 ? 's' : ''}`}
+        subtitle={loading ? '' : `Total Records : ${stats.count}    |    Total Amount : Rs ${fmtCurrency(stats.total)}`}
         showBack
         onBackPress={() => navigation.goBack()}
       />
@@ -1029,6 +1061,10 @@ const styles = StyleSheet.create({
   },
   actionBtnText: { fontSize: moderateScale(11), fontWeight: '600' },
   deleteBtnCard: { backgroundColor: '#FEF2F2', borderColor: '#FECACA' },
+  editIconBtn: {
+    width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: '#EFF6FF', borderWidth: 1, borderColor: '#BFDBFE',
+  },
 
   // Date header
   dateHeader: {

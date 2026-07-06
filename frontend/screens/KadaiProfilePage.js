@@ -18,7 +18,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import Header from '../components/Header';
 import { loadShopProfile, saveShopProfile, DEFAULT_SHOP_PROFILE } from '../services/shopProfile';
-import { uploadShopLogo } from '../services/api';
+import { uploadShopLogo, uploadShopSignature } from '../services/api';
 import { horizontalPadding, moderateScale, spacing } from '../utils/responsive';
 
 // ── Theme (matches GstBillpreview premium silver) ─────────────
@@ -137,6 +137,48 @@ const KadaiProfilePage = ({ navigation }) => {
 
   const removeLogo = () => set('logoBase64', '');
 
+  const pickSignature = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission Required', 'Please allow photo library access to upload a signature.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [3, 1],
+      quality: 0.45,
+      base64: true,
+    });
+    if (!result.canceled && result.assets?.[0]?.base64) {
+      const { base64, mimeType } = result.assets[0];
+      const mime = mimeType || 'image/jpeg';
+      set('signatureBase64', `data:${mime};base64,${base64}`);
+      // Upload to backend to get a hosted URL
+      try {
+        const uploadResult = await uploadShopSignature(base64, mime);
+        console.log('[Signature] upload response:', uploadResult);
+        if (uploadResult?.success && uploadResult.signatureUrl) {
+          set('signatureUrl', uploadResult.signatureUrl);
+        } else {
+          console.log('[Signature] upload did not return signatureUrl:', uploadResult);
+          Alert.alert(
+            'Signature Upload Issue',
+            (uploadResult?.message || 'Could not reach the server.') + ' The signature preview is set locally — tap "Save" below, and if it still fails, try again once your connection is stable.'
+          );
+        }
+      } catch (err) {
+        console.log('[Signature] upload failed:', err?.message || err);
+        Alert.alert(
+          'Signature Upload Issue',
+          'Could not upload the signature to the server. The signature preview is set locally — tap "Save" below, and if it still fails, try again once your connection is stable.'
+        );
+      }
+    }
+  };
+
+  const removeSignature = () => set('signatureBase64', '');
+
   const handleSave = async () => {
     if (!form.shopName.trim()) {
       Alert.alert('Validation', 'Shop Name is required.');
@@ -144,7 +186,16 @@ const KadaiProfilePage = ({ navigation }) => {
     }
     setSaving(true);
     const result = await saveShopProfile(form);
+    console.log('[Signature] saveShopProfile result:', {
+      success: result.success,
+      signatureBase64: result.profile?.signatureBase64 ? '(set)' : '(empty)',
+      signatureUrl: result.profile?.signatureUrl || '(empty)',
+    });
     const latestProfile = await loadShopProfile();
+    console.log('[Signature] reloaded profile after save:', {
+      signatureBase64: latestProfile?.signatureBase64 ? '(set)' : '(empty)',
+      signatureUrl: latestProfile?.signatureUrl || '(empty)',
+    });
     setForm({ ...DEFAULT_SHOP_PROFILE, ...latestProfile });
     setSaving(false);
     DeviceEventEmitter.emit('shopProfileUpdated', latestProfile);
@@ -250,6 +301,39 @@ const KadaiProfilePage = ({ navigation }) => {
             <Field label="Branch Name" value={form.branch} onChangeText={(v) => set('branch', v)} placeholder="e.g. Trichy Main Branch" />
           </SectionCard>
 
+          {/* ── Section: Authorized Signature ── */}
+          <SectionCard title="Authorized Signature" icon="draw-pen">
+            <Text style={styles.fieldLabel}>Signature</Text>
+            <View style={styles.logoRow}>
+              {form.signatureBase64 ? (
+                <Image
+                  source={{ uri: form.signatureBase64 }}
+                  style={styles.logoPreview}
+                  resizeMode="contain"
+                />
+              ) : (
+                <View style={styles.logoEmpty}>
+                  <MaterialCommunityIcons name="image-plus" size={28} color={C.silver} />
+                  <Text style={styles.logoEmptyText}>No signature</Text>
+                </View>
+              )}
+              <View style={styles.logoBtns}>
+                <TouchableOpacity style={styles.uploadBtn} onPress={pickSignature} activeOpacity={0.8}>
+                  <MaterialCommunityIcons name="upload" size={14} color={C.white} />
+                  <Text style={styles.uploadBtnText}>
+                    {form.signatureBase64 ? 'Change Signature' : 'Upload Signature'}
+                  </Text>
+                </TouchableOpacity>
+                {form.signatureBase64 ? (
+                  <TouchableOpacity style={styles.removeBtn} onPress={removeSignature} activeOpacity={0.8}>
+                    <MaterialCommunityIcons name="delete-outline" size={14} color="#DC2626" />
+                    <Text style={styles.removeBtnText}>Remove</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            </View>
+          </SectionCard>
+
           {/* ── Section: Invoice Content ── */}
           <SectionCard title="Invoice Content" icon="file-document-edit-outline">
             <Field
@@ -259,6 +343,7 @@ const KadaiProfilePage = ({ navigation }) => {
               placeholder="Enter your invoice terms & conditions…"
               multiline
               numberOfLines={4}
+              autoCapitalize="sentences"
             />
             <Field
               label="Footer Notes"

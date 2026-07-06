@@ -21,8 +21,7 @@ export const toNum = (v, fb = 0) => {
 export const fmt = (v) =>
   toNum(v).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-export const fmtW = (v) =>
-  `${toNum(v).toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 })} gram`;
+export const fmtW = (v) => `${toNum(v).toFixed(1)}g`;
 
 export const fmtDate = (v) => {
   if (!v) return '-';
@@ -213,7 +212,7 @@ export const buildSummary = (cash, weight, gstSettings) => {
 };
 
 // ── HTML bill builder ──────────────────────────────────────────────────────
-export const buildPaymentBillHtml = (tx, summary, settings, logoSrc = '', profile = {}) => {
+export const buildPaymentBillHtml = (tx, summary, settings, logoSrc = '', profile = {}, signatureSrc = '') => {
   const cgstPct    = settings?.cgstPercent    || '1.50';
   const sgstPct    = settings?.sgstPercent    || '1.50';
   const hsnCode    = settings?.hsnCode        || '71141110';
@@ -244,20 +243,20 @@ export const buildPaymentBillHtml = (tx, summary, settings, logoSrc = '', profil
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: Arial, Helvetica, sans-serif; font-size: 13.5px; color: #1A2A38; background: #fff; }
   .invoice { border: 1.5px solid #97A8B5; }
-  .top-strip { display:flex; justify-content:space-between; align-items:center; padding:6px 14px; background:#EEF2F5; border-bottom:1.5px solid #97A8B5; }
-  .top-title  { font-size:16px; font-weight:800; letter-spacing:.8px; color:#1C2B3A; }
+  .top-strip { position:relative; display:flex; justify-content:flex-end; align-items:center; padding:6px 14px; background:#EEF2F5; border-bottom:1.5px solid #97A8B5; }
+  .top-title  { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); font-size:16px; font-weight:800; letter-spacing:.8px; color:#1C2B3A; }
   .top-orig   { font-size:11.5px; font-weight:700; color:#445C6E; }
   .banner     { background:#1C2B3A; color:#fff; padding:10px 14px 8px; border-bottom:3px solid #8FA4B5; }
   .banner-top { display:flex; justify-content:space-between; font-size:12px; font-weight:600; color:#A8BDC9; margin-bottom:6px; }
-  .banner-mid { display:flex; justify-content:center; align-items:center; gap:12px; margin-bottom:5px; }
-  .banner-logo      { width:125px; height:auto; display:block; }
+  .banner-mid { position:relative; display:flex; justify-content:center; align-items:center; min-height:120px; margin-bottom:5px; }
+  .banner-logo      { position:absolute; left:0; top:50%; transform:translateY(-50%); width:138px; height:auto; display:block; }
   .banner-name{ font-size:34px; font-weight:900; letter-spacing:2px; color:#FFF; text-transform:uppercase; }
   .banner-tag { text-align:center; font-size:12px; color:#8FA4B5; }
-  .addr-strip { text-align:center; padding:7px 14px; background:#F5F7F9; border-bottom:1px solid #C8D4DC; font-size:13px; color:#445C6E; line-height:1.85; }
-  .details-grid { display:grid; grid-template-columns:1.1fr 1fr; border-bottom:1px solid #C8D4DC; }
+  .addr-strip { text-align:center; padding:7px 14px; background:#F5F7F9; border-bottom:1px solid #C8D4DC; font-size:13px; color:#445C6E; line-height:1.5; }
+  .details-grid { display:grid; grid-template-columns:1.1fr 1fr; border-bottom:1px solid #C8D4DC; align-items:start; }
   .detail-box   { padding:11px 13px; background:#FFF; }
   .detail-box.left { border-right:1px solid #C8D4DC; }
-  .d-row  { display:flex; align-items:flex-start; font-size:12.5px; margin-bottom:7px; line-height:1.55; }
+  .d-row  { display:flex; align-items:flex-start; font-size:12.5px; margin-bottom:5px; line-height:1.35; }
   .d-lbl  { min-width:118px; font-weight:700; color:#3F5565; }
   .d-colon{ width:12px; text-align:center; color:#5F7382; font-weight:700; }
   .d-val  { flex:1; color:#1C2B3A; }
@@ -288,7 +287,7 @@ export const buildPaymentBillHtml = (tx, summary, settings, logoSrc = '', profil
   .co-stamp { margin-top:14px; text-align:right; font-size:11.5px; font-weight:700; color:#1C2B3A; line-height:1.75; }
   .sig-grid { display:grid; grid-template-columns:1fr 1fr; min-height:120px; border-bottom:1px solid #C8D4DC; }
   .sig-box  { display:flex; flex-direction:column; justify-content:flex-end; align-items:center; padding:10px 8px; }
-  .sig-box.left { border-right:1px solid #C8D4DC; }
+  .sig-img  { max-width:130px; max-height:55px; height:auto; display:block; margin-bottom:4px; }
   .sig-lbl  { font-size:13px; font-weight:800; color:#1C2B3A; }
   .sig-co   { font-size:11px; color:#6B8496; margin-bottom:5px; }
   .bottom-bar { display:grid; grid-template-columns:1fr 1fr 1fr; padding:8px 14px; background:#243447; }
@@ -303,7 +302,7 @@ export const buildPaymentBillHtml = (tx, summary, settings, logoSrc = '', profil
 <div class="invoice">
 
   <div class="top-strip">
-    <span class="top-title">Payment Receipt</span>
+    <span class="top-title">Tax Invoice</span>
     <span class="top-orig">ORIGINAL FOR RECIPIENT</span>
   </div>
 
@@ -334,7 +333,6 @@ export const buildPaymentBillHtml = (tx, summary, settings, logoSrc = '', profil
     <div class="detail-box">
       <div class="d-row"><span class="d-lbl">Invoice Number</span><span class="d-colon">:</span><span class="d-val">${esc(tx.invoiceNumber || '-')}</span></div>
       <div class="d-row"><span class="d-lbl">Invoice Date</span><span class="d-colon">:</span><span class="d-val">${esc(fmtDate(tx.invoiceDate))}</span></div>
-      <div class="d-row"><span class="d-lbl">Mobile No</span><span class="d-colon">:</span><span class="d-val">${esc(tx.phone || '-')}</span></div>
     </div>
   </div>
 
@@ -390,25 +388,19 @@ export const buildPaymentBillHtml = (tx, summary, settings, logoSrc = '', profil
       <div class="bank-row"><span class="b-lbl">A/c No.</span><span>:</span><span class="b-val">${esc(bankAcct)}</span></div>
       <div class="bank-row"><span class="b-lbl">Branch &amp; IFS Code</span><span>:</span><span class="b-val">${esc(bankBranch)} / ${esc(bankIfsc)}</span></div>
       ${upiId !== '-' ? `<div class="bank-row"><span class="b-lbl">UPI ID</span><span>:</span><span class="b-val">${esc(upiId)}</span></div>` : ''}
-      <div class="co-stamp">for ${esc(profile.name || '')} [${esc(profile.financialYear || '2025-2026')}]</div>
     </div>
   </div>
 
   <div class="sig-grid">
     <div class="sig-box left">
-      <span class="sig-lbl">Customer Signature</span>
     </div>
     <div class="sig-box">
+      ${signatureSrc ? `<img src="${signatureSrc}" alt="Signature" class="sig-img"/>` : ''}
       <span class="sig-co">for ${esc(profile.name || '')}</span>
       <span class="sig-lbl">Authorised Signatory</span>
     </div>
   </div>
 
-  <div class="bottom-bar">
-    <div class="bb-cell"><span class="bb-lbl">Sales Value</span><span>:</span><span class="bb-val">${fmt(summary.grandTotal)}</span></div>
-    <div class="bb-cell mid"><span class="bb-lbl">Purchase Value</span><span>:</span><span class="bb-val">&nbsp;</span></div>
-    <div class="bb-cell right"><span class="bb-lbl">Receivable Amount:</span><span class="bb-val">${fmt(summary.grandTotal)}</span></div>
-  </div>
 
 </div>
 </body>

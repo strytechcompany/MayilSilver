@@ -44,6 +44,25 @@ const loadLogoSrc = async (profile) => {
   return '';
 };
 
+const loadSignatureSrc = async (profile) => {
+  if (profile?.signatureBase64) {
+    const b = profile.signatureBase64;
+    return b.startsWith('data:') ? b : `data:image/png;base64,${b}`;
+  }
+  if (profile?.signatureUrl) {
+    try {
+      const fullUrl = profile.signatureUrl.startsWith('http')
+        ? profile.signatureUrl
+        : `${BACKEND_URL}${profile.signatureUrl}`;
+      const cached = `${FileSystem.cacheDirectory}payment_signature_pdf.png`;
+      const { uri: dl } = await FileSystem.downloadAsync(fullUrl, cached);
+      const base64 = await FileSystem.readAsStringAsync(dl, { encoding: 'base64' });
+      return `data:image/png;base64,${base64}`;
+    } catch { return ''; }
+  }
+  return '';
+};
+
 const toNumber = (value) => {
   const parsed = parseFloat(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -69,6 +88,12 @@ const PaymentBillPreviewPage = ({ navigation, route }) => {
   const [html, setHtml] = useState('');
   const [loading, setLoading] = useState(true);
   const [printing, setPrinting] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => setRefreshKey((k) => k + 1));
+    return unsubscribe;
+  }, [navigation]);
 
   const resolvedDate = paymentData?.invoiceDate || paymentData?.updatedAt || paymentData?.createdAt;
 
@@ -96,6 +121,10 @@ const PaymentBillPreviewPage = ({ navigation, route }) => {
       setLoading(true);
       try {
         const [profile, gstSettings] = await Promise.all([loadShopProfile(), loadGstSettings()]);
+        console.log('[Signature] profile fetch result:', {
+          signatureBase64: profile?.signatureBase64 ? '(set)' : '(empty)',
+          signatureUrl: profile?.signatureUrl || '(empty)',
+        });
         const summary = buildSummary(paymentData.cash, paymentData.weight, gstSettings);
         summary.rows[0].particular = paymentData.itemName || '';
         const silverRate = toNumber(paymentData?.ftRate) || toNumber(goldRate);
@@ -124,8 +153,12 @@ const PaymentBillPreviewPage = ({ navigation, route }) => {
           termsAndConditions: profile.termsAndConditions || '',
         };
 
-        const logoSrc = await loadLogoSrc(profile);
-        setHtml(buildPaymentBillHtml(transaction, summary, gstSettings, logoSrc, shopProfileForHtml));
+        const [logoSrc, signatureSrc] = await Promise.all([
+          loadLogoSrc(profile),
+          loadSignatureSrc(profile),
+        ]);
+        console.log('[Signature] resolved signatureSrc:', signatureSrc ? `${signatureSrc.slice(0, 40)}... (len ${signatureSrc.length})` : '(empty)');
+        setHtml(buildPaymentBillHtml(transaction, summary, gstSettings, logoSrc, shopProfileForHtml, signatureSrc));
       } catch (error) {
         console.error('PaymentBillPreview buildPreview:', error);
         Alert.alert('Error', 'Failed to load payment bill preview.');
@@ -135,7 +168,7 @@ const PaymentBillPreviewPage = ({ navigation, route }) => {
     };
 
     buildPreview();
-  }, [paymentData, resolvedDate, goldRate]);
+  }, [paymentData, resolvedDate, goldRate, refreshKey]);
 
   const handlePrint = async () => {
     if (!html) return;

@@ -604,19 +604,40 @@ export const deleteGstCustomer = async (id) => {
 
 // ── SHOP PROFILE ─────────────────────────────────────────────
 
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 export const fetchShopProfileFromDb = async () => {
-  try {
-    const data = await getJSON(`${base_url}/shop-profile`);
-    return data.profile || null;
-  } catch (error) {
-    console.error('fetchShopProfileFromDb Error:', error);
-    return null;
+  // MongoDB Atlas can drop its connection briefly; retry once after a short
+  // delay instead of immediately falling back to a possibly-stale local cache.
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    try {
+      const data = await getJSON(`${base_url}/shop-profile`);
+      console.log('[Signature] fetchShopProfileFromDb response (attempt', attempt, '):', {
+        signatureBase64: data?.profile?.signatureBase64 ? '(set)' : '(empty)',
+        signatureUrl: data?.profile?.signatureUrl || '(empty)',
+      });
+      return data.profile || null;
+    } catch (error) {
+      console.error(`fetchShopProfileFromDb Error (attempt ${attempt}):`, error?.message || error);
+      if (attempt < 2) await delay(1500);
+    }
   }
+  return null;
 };
 
 export const saveShopProfileToDb = async (profile) => {
+  console.log('[Signature] saveShopProfileToDb request:', {
+    signatureBase64: profile?.signatureBase64 ? '(set)' : '(empty)',
+    signatureUrl: profile?.signatureUrl || '(empty)',
+  });
   try {
-    return await putJSON(`${base_url}/shop-profile`, profile);
+    const result = await putJSON(`${base_url}/shop-profile`, profile);
+    console.log('[Signature] saveShopProfileToDb response:', {
+      success: result?.success,
+      signatureBase64: result?.profile?.signatureBase64 ? '(set)' : '(empty)',
+      signatureUrl: result?.profile?.signatureUrl || '(empty)',
+    });
+    return result;
   } catch (error) {
     console.error('saveShopProfileToDb Error:', error);
     return { success: false, message: 'Network error' };
@@ -628,6 +649,18 @@ export const uploadShopLogo = async (base64Data, mimeType) => {
     return await postJSON(`${base_url}/shop-profile/logo`, { base64Data, mimeType });
   } catch (error) {
     console.error('uploadShopLogo Error:', error);
+    return { success: false, message: 'Network error' };
+  }
+};
+
+export const uploadShopSignature = async (base64Data, mimeType) => {
+  console.log('[Signature] uploadShopSignature request: mimeType=', mimeType, 'base64 length=', base64Data?.length);
+  try {
+    const result = await postJSON(`${base_url}/shop-profile/signature`, { base64Data, mimeType });
+    console.log('[Signature] uploadShopSignature response:', result);
+    return result;
+  } catch (error) {
+    console.error('uploadShopSignature Error:', error);
     return { success: false, message: 'Network error' };
   }
 };
