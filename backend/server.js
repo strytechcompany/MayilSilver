@@ -862,31 +862,41 @@ router.post('/shop-profile/logo', async (req, res) => {
 
 // POST /api/shop-profile/signature — upload signature file, store URL in ShopProfile
 router.post('/shop-profile/signature', async (req, res) => {
+  let absolutePath;
   try {
     const { base64Data, mimeType } = req.body;
     if (!base64Data) return res.status(400).json({ success: false, message: 'No image data provided' });
 
     const ext = (mimeType || '').includes('png') ? '.png' : '.jpg';
     const safeName = `signature_${Date.now()}${ext}`;
-    const absolutePath = path.join(SIGNATURE_DIR, safeName);
-
-    // Remove old signature files to keep storage clean
-    try {
-      const existing = fs.readdirSync(SIGNATURE_DIR);
-      existing.forEach((f) => { try { fs.unlinkSync(path.join(SIGNATURE_DIR, f)); } catch {} });
-    } catch {}
-
-    fs.writeFileSync(absolutePath, base64Data, 'base64');
+    absolutePath = path.join(SIGNATURE_DIR, safeName);
     const signatureUrl = `/uploads/signature/${safeName}`;
 
+    fs.writeFileSync(absolutePath, base64Data, 'base64');
+
+    // Update MongoDB BEFORE deleting old files. If this throws (e.g. a
+    // transient Atlas disconnect), the catch block below rolls back the new
+    // file so the DB's signatureUrl and the files on disk never drift apart —
+    // previously the old file was deleted first, so a failed DB write left
+    // MongoDB pointing at a file that no longer existed (broken signature).
     await ShopProfile.findOneAndUpdate(
       { _singleton: 'profile' },
       { $set: { signatureUrl } },
       { upsert: true }
     );
 
+    // Only now that MongoDB is confirmed updated, clean up old signature files
+    try {
+      const existing = fs.readdirSync(SIGNATURE_DIR);
+      existing.forEach((f) => {
+        if (f === safeName) return;
+        try { fs.unlinkSync(path.join(SIGNATURE_DIR, f)); } catch {}
+      });
+    } catch {}
+
     res.json({ success: true, signatureUrl });
   } catch (err) {
+    if (absolutePath) { try { fs.unlinkSync(absolutePath); } catch {} }
     res.status(500).json({ success: false, message: err.message });
   }
 });

@@ -221,9 +221,9 @@ export const buildPaymentBillHtml = (tx, summary, settings, logoSrc = '', profil
   .banner-name{ font-size:34px; font-weight:900; letter-spacing:2px; color:#FFF; text-transform:uppercase; }
   .banner-tag { text-align:center; font-size:12px; color:#8FA4B5; }
   .addr-strip { text-align:center; padding:7px 14px; background:#F5F7F9; border-bottom:1px solid #C8D4DC; font-size:13px; color:#445C6E; line-height:1.5; }
-  .details-grid { display:grid; grid-template-columns:1.1fr 1fr; border-bottom:1px solid #C8D4DC; align-items:start; }
-  .detail-box   { padding:11px 13px; background:#FFF; }
-  .detail-box.left { border-right:1px solid #C8D4DC; }
+  .details-grid { display:flex; border-bottom:1px solid #C8D4DC; }
+  .detail-box   { flex:1; padding:11px 13px; background:#FFF; }
+  .detail-box.left { flex:1.1; border-right:1px solid #C8D4DC; }
   .d-row  { display:flex; align-items:flex-start; font-size:12.5px; margin-bottom:5px; line-height:1.35; }
   .d-lbl  { min-width:118px; font-weight:700; color:#3F5565; }
   .d-colon{ width:12px; text-align:center; color:#5F7382; font-weight:700; }

@@ -493,12 +493,13 @@ const GstBillpreview = ({ navigation, route }) => {
             <View style={styles.customerBox}>
               <DetailRow label="Name"       value={transaction?.customerName || '-'} />
               <DetailRow label="Phone"      value={transaction?.phone || '-'} />
+              <DetailRow label="Address"    value={transaction?.address || '-'} />
+              <DetailRow label="GST Number" value={transaction?.gstNumber || '-'} />
             </View>
             {/* Right: Invoice */}
             <View style={styles.invoiceBox}>
               <DetailRow label="Invoice Number" value={transaction?.invoiceNumber || '-'} />
               <DetailRow label="Invoice Date" value={formatDisplayDate(transaction?.invoiceDate)} />
-              <DetailRow label="Mobile No" value={transaction?.phone || '-'} />
             </View>
           </View>
 
@@ -742,9 +743,9 @@ const buildInvoiceHtml = (transaction, summary, settings, logoSrc = '', profile 
   .irn-block b { font-weight:700; color:#1C2B3A; }
 
   /* 5. Details grid */
-  .details-grid { display:grid; grid-template-columns:1.1fr 1fr; border-bottom:1px solid #C8D4DC; }
-  .detail-box { padding:11px 13px; background:#FFFFFF; }
-  .detail-box.left { border-right:1px solid #C8D4DC; }
+  .details-grid { display:flex; border-bottom:1px solid #C8D4DC; }
+  .detail-box { flex:1; padding:11px 13px; background:#FFFFFF; }
+  .detail-box.left { flex:1.1; border-right:1px solid #C8D4DC; }
   .cust-name { font-size:14px; font-weight:800; color:#1C2B3A; margin-bottom:4px; }
   .cust-addr { font-size:13px; color:#445C6E; line-height:1.8; margin-bottom:6px; }
   .d-row { display:flex; align-items:flex-start; font-size:12.5px; margin-bottom:7px; line-height:1.55; }
@@ -855,11 +856,12 @@ const buildInvoiceHtml = (transaction, summary, settings, logoSrc = '', profile 
     <div class="detail-box left">
       <div class="d-row"><span class="d-lbl">Name</span><span class="d-colon">:</span><span class="d-val">${escapeHtml(transaction.customerName || '-')}</span></div>
       <div class="d-row"><span class="d-lbl">Phone</span><span class="d-colon">:</span><span class="d-val">${escapeHtml(transaction.phone || '-')}</span></div>
+      <div class="d-row"><span class="d-lbl">Address</span><span class="d-colon">:</span><span class="d-val">${escapeHtml(transaction.address || '-')}</span></div>
+      <div class="d-row"><span class="d-lbl">GST Number</span><span class="d-colon">:</span><span class="d-val">${escapeHtml(transaction.gstNumber || '-')}</span></div>
     </div>
     <div class="detail-box">
       <div class="d-row"><span class="d-lbl">Invoice Number</span><span class="d-colon">:</span><span class="d-val">${escapeHtml(transaction.invoiceNumber || '-')}</span></div>
       <div class="d-row"><span class="d-lbl">Invoice Date</span><span class="d-colon">:</span><span class="d-val">${escapeHtml(formatDisplayDate(transaction.invoiceDate))}</span></div>
-      <div class="d-row"><span class="d-lbl">Mobile No</span><span class="d-colon">:</span><span class="d-val">${escapeHtml(transaction.phone || '-')}</span></div>
     </div>
   </div>
 
