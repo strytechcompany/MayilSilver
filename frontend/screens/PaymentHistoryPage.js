@@ -12,7 +12,7 @@ import Header from '../components/Header';
 import { fetchPaymentHistoryFromDb, deletePaymentRecord } from '../services/api';
 import { loadGstSettings } from '../services/gstSettings';
 import { loadShopProfile } from '../services/shopProfile';
-import { buildPaymentBillHtml, buildSummary } from '../utils/paymentUtils';
+import { buildPaymentBillHtml, buildSummary, fmtDate } from '../utils/paymentUtils';
 import { getLogoDataUri as loadLogoSrc, getSignatureDataUri as loadSignatureSrc } from '../utils/shopBranding';
 import { horizontalPadding, moderateScale, spacing } from '../utils/responsive';
 
@@ -524,8 +524,12 @@ const PaymentHistoryPage = ({ navigation }) => {
 
         {/* Detail rows */}
         <View style={styles.detailRow}>
-          <MaterialCommunityIcons name="clock-outline" size={12} color="#9CA3AF" />
-          <Text style={styles.detailText}>{fmtDateDisplay(recordDate(item))}</Text>
+          <Text style={styles.dateLabel}>🗓 Duplicate Date</Text>
+          <Text style={styles.detailText}>{fmtDate(item.invoiceDate)}</Text>
+        </View>
+        <View style={styles.detailRow}>
+          <Text style={styles.dateLabel}>📋 Current  Date</Text>
+          <Text style={styles.detailText}>{fmtDate(item.paymentCreatedDate || item.invoiceDate)}</Text>
         </View>
         <View style={styles.detailRow}>
           <MaterialCommunityIcons name="cube-outline" size={12} color="#9CA3AF" />
@@ -1007,6 +1011,7 @@ const styles = StyleSheet.create({
   draftBadgeText: { color: '#B45309' },
   detailRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 3 },
   detailText: { fontSize: moderateScale(11), color: '#6B7280', flex: 1 },
+  dateLabel: { fontSize: moderateScale(10.5), fontWeight: '600', color: '#4B5563' },
 
   cardActions: {
     flexDirection: 'row', gap: 6, marginTop: 10,

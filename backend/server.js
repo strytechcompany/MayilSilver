@@ -72,8 +72,9 @@ const connectDB = async () => {
       socketTimeoutMS: 45000,
       maxPoolSize: 10,
     })
-      .then((connection) => {
+      .then(async (connection) => {
         console.log('MongoDB Connected');
+        await backfillPaymentCreatedDate();
         return connection;
       })
       .catch((err) => {
@@ -296,7 +297,8 @@ const PaymentTransactionSchema = new mongoose.Schema({
   sgst: { type: Number, default: 0 },
   roundOff: { type: Number, default: 0 },
   total: { type: Number, default: 0 },
-  invoiceDate: { type: Date, default: Date.now },
+  invoiceDate: { type: Date, default: Date.now }, // editable "payment date" — Admin can change this any time
+  paymentCreatedDate: { type: Date, default: null }, // original creation date — set once, never modified afterward
   printedAt: { type: Date, default: null }
 }, { timestamps: true });
 
@@ -304,6 +306,25 @@ const Bill = mongoose.model('Bill', BillSchema);
 const GstCustomerTransaction = mongoose.model('GstCustomerTransaction', GstCustomerTransactionSchema);
 const GstSettings = mongoose.model('GstSettings', GstSettingsSchema);
 const PaymentTransaction = mongoose.model('PaymentTransaction', PaymentTransactionSchema);
+
+// One-time backward-compatibility migration: old PaymentTransaction records
+// predate the paymentCreatedDate field. Backfill it from each record's own
+// invoiceDate (falling back to createdAt) so it never has to run again —
+// the $exists:false filter means already-migrated/new records are skipped.
+const backfillPaymentCreatedDate = async () => {
+  try {
+    const result = await PaymentTransaction.updateMany(
+      { paymentCreatedDate: { $exists: false } },
+      [{ $set: { paymentCreatedDate: { $ifNull: ['$invoiceDate', '$createdAt'] } } }],
+      { updatePipeline: true }
+    );
+    if (result.modifiedCount > 0) {
+      console.log(`[Migration] Backfilled paymentCreatedDate on ${result.modifiedCount} payment record(s)`);
+    }
+  } catch (err) {
+    console.error('[Migration] backfillPaymentCreatedDate failed:', err?.message || err);
+  }
+};
 
 const UserSchema = new mongoose.Schema({
   userName:       { type: String, default: '' },
@@ -1332,6 +1353,16 @@ router.post('/payments/save', async (req, res) => {
       invoiceDate: toDate(invoiceDate),
       printedAt: normalizedStatus === 'final' ? new Date() : (existing?.printedAt || null)
     };
+
+    // paymentCreatedDate is the original creation date and is never overwritten
+    // by edits. New payments get it set once here; old records missing it
+    // (pre-migration) get backfilled from their own current invoiceDate —
+    // never from the incoming edited invoiceDate — the first time they're saved.
+    if (!existing) {
+      payload.paymentCreatedDate = new Date();
+    } else if (!existing.paymentCreatedDate) {
+      payload.paymentCreatedDate = existing.invoiceDate || existing.createdAt || new Date();
+    }
 
     let payment = null;
     if (existing) {
