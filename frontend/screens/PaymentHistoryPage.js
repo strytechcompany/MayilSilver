@@ -1,77 +1,20 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Alert, FlatList, Modal, StyleSheet,
+  ActivityIndicator, Alert, DeviceEventEmitter, FlatList, Modal, StyleSheet,
   Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Print from 'expo-print';
-import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
-import { Asset } from 'expo-asset';
 import { WebView } from 'react-native-webview';
 import Header from '../components/Header';
 import { fetchPaymentHistoryFromDb, deletePaymentRecord } from '../services/api';
 import { loadGstSettings } from '../services/gstSettings';
 import { loadShopProfile } from '../services/shopProfile';
 import { buildPaymentBillHtml, buildSummary } from '../utils/paymentUtils';
-import { base_url } from '../config';
+import { getLogoDataUri as loadLogoSrc, getSignatureDataUri as loadSignatureSrc } from '../utils/shopBranding';
 import { horizontalPadding, moderateScale, spacing } from '../utils/responsive';
-
-// ── Logo helper ───────────────────────────────────────────────
-const BACKEND_URL = base_url.replace(/\/api\/?$/, '');
-const LOGO_ASSET = require('../assets/logo.png');
-
-let _localLogoB64 = '';
-const loadLogoFallback = async () => {
-  if (_localLogoB64) return _localLogoB64;
-  try {
-    const [asset] = await Asset.loadAsync(LOGO_ASSET);
-    const b64 = await FileSystem.readAsStringAsync(asset.localUri ?? asset.uri, { encoding: 'base64' });
-    _localLogoB64 = `data:image/png;base64,${b64}`;
-  } catch {}
-  return _localLogoB64;
-};
-
-const loadLogoSrc = async (profile) => {
-  // logoUrl is always set when logo is uploaded via POST /api/shop-profile/logo
-  if (profile?.logoUrl) {
-    try {
-      const fullUrl = profile.logoUrl.startsWith('http')
-        ? profile.logoUrl
-        : `${BACKEND_URL}${profile.logoUrl}`;
-      const cacheFile = `${FileSystem.cacheDirectory}history_logo_pdf.png`;
-      const { uri: dl } = await FileSystem.downloadAsync(fullUrl, cacheFile);
-      const base64 = await FileSystem.readAsStringAsync(dl, { encoding: 'base64' });
-      if (base64) return `data:image/png;base64,${base64}`;
-    } catch {}
-  }
-  if (profile?.logoBase64) {
-    const b = profile.logoBase64;
-    if (b) return b.startsWith('data:') ? b : `data:image/png;base64,${b}`;
-  }
-  return loadLogoFallback();
-};
-
-// ── Signature helper ──────────────────────────────────────────
-const loadSignatureSrc = async (profile) => {
-  if (profile?.signatureUrl) {
-    try {
-      const fullUrl = profile.signatureUrl.startsWith('http')
-        ? profile.signatureUrl
-        : `${BACKEND_URL}${profile.signatureUrl}`;
-      const cacheFile = `${FileSystem.cacheDirectory}history_signature_pdf.png`;
-      const { uri: dl } = await FileSystem.downloadAsync(fullUrl, cacheFile);
-      const base64 = await FileSystem.readAsStringAsync(dl, { encoding: 'base64' });
-      if (base64) return `data:image/png;base64,${base64}`;
-    } catch {}
-  }
-  if (profile?.signatureBase64) {
-    const b = profile.signatureBase64;
-    if (b) return b.startsWith('data:') ? b : `data:image/png;base64,${b}`;
-  }
-  return '';
-};
 
 // ── Combined HTML builder ─────────────────────────────────────
 const buildRecordHtml = (record, gstSettings, logoSrc, shopHtmlProfile, signatureSrc) => {
@@ -220,6 +163,7 @@ const PaymentHistoryPage = ({ navigation }) => {
   const cachedGstSettings = useRef(null);
   const cachedLogoSrc     = useRef('');
   const cachedSignatureSrc = useRef('');
+  const cacheReady        = useRef(false); // only true once logo/signature have also finished resolving
 
   // ── Data loading ──────────────────────────────────────────
   const refresh = useCallback(async () => {
@@ -242,16 +186,28 @@ const PaymentHistoryPage = ({ navigation }) => {
   // Preload profile + gstSettings once
   useEffect(() => {
     Promise.all([loadShopProfile(), loadGstSettings()]).then(async ([profile, settings]) => {
+      const [logoSrc, signatureSrc] = await Promise.all([loadLogoSrc(profile), loadSignatureSrc(profile)]);
       cachedProfile.current     = profile;
       cachedGstSettings.current = settings;
-      cachedLogoSrc.current     = await loadLogoSrc(profile);
-      cachedSignatureSrc.current = await loadSignatureSrc(profile);
+      cachedLogoSrc.current     = logoSrc;
+      cachedSignatureSrc.current = signatureSrc;
+      cacheReady.current        = true; // set last, only once logo/signature are actually resolved
     });
+  }, []);
+
+  // Invalidate the cache whenever Kadai Profile saves a new logo/signature,
+  // so a newly-uploaded logo replaces the old one everywhere without needing
+  // an app restart.
+  useEffect(() => {
+    const subscription = DeviceEventEmitter.addListener('shopProfileUpdated', () => {
+      cacheReady.current = false;
+    });
+    return () => subscription.remove();
   }, []);
 
   // ── Settings accessor (loads once, caches) ────────────────
   const getSettings = useCallback(async () => {
-    if (cachedProfile.current && cachedGstSettings.current) {
+    if (cacheReady.current) {
       return {
         profile: cachedProfile.current,
         gstSettings: cachedGstSettings.current,
@@ -266,6 +222,7 @@ const PaymentHistoryPage = ({ navigation }) => {
     cachedGstSettings.current = gstSettings;
     cachedLogoSrc.current     = logoSrc;
     cachedSignatureSrc.current = signatureSrc;
+    cacheReady.current        = true;
     return { profile, gstSettings, logoSrc, signatureSrc };
   }, []);
 

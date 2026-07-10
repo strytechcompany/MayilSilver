@@ -27,7 +27,9 @@ export const generatePDF = async (data, type) => {
   let html = '';
 
   if (type === 'bill') {
-    const { billData, customer } = data;
+    const { billData, customer, profile = {}, logoSrc = '', signatureSrc = '' } = data;
+    const shopName = escapeHtml(profile.shopName || 'MAYIL SILVER');
+    const shopTagline = escapeHtml(profile.tagline || 'Pure Silver - Trusted Quality');
     const issueItems = billData.issueItems || [];
     const receiptItems = billData.receiptItems || [];
     const cashEntries = billData.cashEntries || [];
@@ -83,7 +85,8 @@ export const generatePDF = async (data, type) => {
   .top-title { font-size:17px; font-weight:900; letter-spacing:1.2px; color:#1C2B3A; text-align:center; }
   .top-orig  { font-size:11.5px; font-weight:800; color:#445C6E; text-align:right; }
   .banner    { background:#F5F7F9; color:#1C2B3A; padding:10px 14px 8px; border-bottom:1px solid #C8D4DC; }
-  .banner-mid { display:flex; justify-content:center; align-items:center; gap:12px; margin-bottom:4px; }
+  .banner-mid { position:relative; display:flex; justify-content:center; align-items:center; min-height:60px; margin-bottom:4px; }
+  .banner-logo { position:absolute; left:0; top:50%; transform:translateY(-50%); max-width:120px; max-height:60px; width:auto; height:auto; display:block; }
   .banner-name{ font-size:28px; font-weight:900; letter-spacing:1.4px; color:#1C2B3A; text-transform:uppercase; }
   .banner-tag { text-align:center; font-size:12px; color:#6B8496; letter-spacing:.3px; }
   .details-grid { display:grid; grid-template-columns:1.1fr 1fr; padding:10px 14px; background:#FFFFFF; }
@@ -113,6 +116,7 @@ export const generatePDF = async (data, type) => {
   .gt-value { font-size:20px; font-weight:900; }
   .footer-sig { display:grid; grid-template-columns:1fr 1fr; min-height:100px; border-top:1px solid #C8D4DC; }
   .sig-box { display:flex; flex-direction:column; justify-content:flex-end; align-items:center; padding:15px; }
+  .sig-img { max-width:140px; max-height:60px; width:auto; height:auto; display:block; margin-bottom:4px; }
   .sig-lbl { font-size:13px; font-weight:800; border-top:1px solid #1C2B3A; padding-top:5px; width:150px; text-align:center; }
   .bottom-bar { display:grid; grid-template-columns:1fr 1fr 1fr; padding:8px 14px; background:#243447; color:#FFF; font-size:11px; }
   .bb-cell { display:flex; align-items:center; gap:4px; }
@@ -129,9 +133,10 @@ export const generatePDF = async (data, type) => {
   </div>
   <div class="banner">
     <div class="banner-mid">
-      <span class="banner-name">MAYIL SILVER</span>
+      ${logoSrc ? `<img src="${logoSrc}" alt="Logo" class="banner-logo"/>` : ''}
+      <span class="banner-name">${shopName}</span>
     </div>
-    <div class="banner-tag">Pure Silver - Trusted Quality</div>
+    <div class="banner-tag">${shopTagline}</div>
   </div>
   <div class="details-grid">
     <div class="detail-box left">
@@ -212,7 +217,10 @@ export const generatePDF = async (data, type) => {
 
   <div class="footer-sig">
     <div class="sig-box"><span class="sig-lbl">Customer Signature</span></div>
-    <div class="sig-box"><span class="sig-lbl">Authorized Signature</span></div>
+    <div class="sig-box">
+      ${signatureSrc ? `<img src="${signatureSrc}" alt="Signature" class="sig-img"/>` : ''}
+      <span class="sig-lbl">Authorized Signature</span>
+    </div>
   </div>
 
   <div class="bottom-bar">

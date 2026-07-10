@@ -1,13 +1,12 @@
 import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Alert, FlatList, Modal, RefreshControl,
+  ActivityIndicator, Alert, DeviceEventEmitter, FlatList, Modal, RefreshControl,
   StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import { Asset } from 'expo-asset';
 import * as FileSystem from 'expo-file-system/legacy';
 import { WebView } from 'react-native-webview';
 import Header from '../components/Header';
@@ -16,34 +15,8 @@ import { loadGstSettings } from '../services/gstSettings';
 import { loadShopProfile } from '../services/shopProfile';
 import { AppContext } from '../context/AppContext';
 import { computeInvoiceSummary, buildCombinedInvoiceHtml } from '../utils/gstInvoiceBuilder';
+import { getLogoDataUri as loadLogoSrc, getSignatureDataUri as loadSignatureSrc } from '../utils/shopBranding';
 import { horizontalPadding, moderateScale, spacing } from '../utils/responsive';
-
-// ── Logo loader ───────────────────────────────────────────────
-const LOGO_ASSET = require('../assets/logo.png');
-let _cachedGstHistoryLogoDataUri = '';
-
-const loadLogoSrc = async (profile) => {
-  if (profile?.logoBase64) {
-    const b = profile.logoBase64;
-    return b.startsWith('data:') ? b : `data:image/png;base64,${b}`;
-  }
-  if (_cachedGstHistoryLogoDataUri) return _cachedGstHistoryLogoDataUri;
-  try {
-    const asset = Asset.fromModule(LOGO_ASSET);
-    await asset.downloadAsync();
-    const rawUri = asset.localUri || asset.uri || '';
-    if (!rawUri) return '';
-    let fileUri = rawUri;
-    if (!rawUri.startsWith('file://') && !rawUri.startsWith('/')) {
-      const cached = `${FileSystem.cacheDirectory}gst_history_logo.png`;
-      const { uri: dl } = await FileSystem.downloadAsync(rawUri, cached);
-      fileUri = dl;
-    }
-    const base64 = await FileSystem.readAsStringAsync(fileUri, { encoding: 'base64' });
-    _cachedGstHistoryLogoDataUri = `data:image/png;base64,${base64}`;
-    return _cachedGstHistoryLogoDataUri;
-  } catch { return ''; }
-};
 
 const buildProfileObj = (sp) => ({
   name: sp?.shopName || '',
@@ -164,6 +137,15 @@ const GstBillhistory = ({ navigation }) => {
     return unsubscribe;
   }, [navigation, loadGstBills]);
 
+  // Invalidate the cached logo/signature the moment Kadai Profile saves a new
+  // one, so it replaces the old one everywhere without needing to leave this screen.
+  useEffect(() => {
+    const subscription = DeviceEventEmitter.addListener('shopProfileUpdated', () => {
+      resourcesRef.current = null;
+    });
+    return () => subscription.remove();
+  }, []);
+
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     setSearchQuery('');
@@ -238,8 +220,11 @@ const GstBillhistory = ({ navigation }) => {
   const ensureResources = useCallback(async () => {
     if (resourcesRef.current) return resourcesRef.current;
     const [gstSettings, shopProfile] = await Promise.all([loadGstSettings(), loadShopProfile()]);
-    const logoSrc = await loadLogoSrc(shopProfile);
-    resourcesRef.current = { gstSettings, profile: buildProfileObj(shopProfile), logoSrc };
+    const [logoSrc, signatureSrc] = await Promise.all([
+      loadLogoSrc(shopProfile),
+      loadSignatureSrc(shopProfile),
+    ]);
+    resourcesRef.current = { gstSettings, profile: buildProfileObj(shopProfile), logoSrc, signatureSrc };
     return resourcesRef.current;
   }, []);
 
@@ -249,6 +234,7 @@ const GstBillhistory = ({ navigation }) => {
     settings:    res.gstSettings,
     logoSrc:     res.logoSrc,
     profile:     res.profile,
+    signatureSrc: res.signatureSrc,
   }), [ftRate]);
 
   // ── Selection ───────────────────────────────────────────────

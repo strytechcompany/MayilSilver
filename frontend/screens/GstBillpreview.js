@@ -23,10 +23,10 @@ import { AppContext } from '../context/AppContext';
 import { loadGstSettings } from '../services/gstSettings';
 import { DEFAULT_SHOP_PROFILE, loadShopProfile } from '../services/shopProfile';
 import { GST_EDITABLE_INVOICE_KEY, reserveNextInvoiceNumber } from '../utils/paymentUtils';
+import { getLogoDataUri, getSignatureDataUri } from '../utils/shopBranding';
 import { base_url } from '../config';
 import { horizontalPadding, moderateScale, spacing } from '../utils/responsive';
 
-const LOGO_ASSET = require('../assets/logo.png');
 const backend_url = base_url.replace(/\/api\/?$/, '');
 
 // ── Premium Silver Jewellery Theme ────────────────────────────────────────────
@@ -174,6 +174,7 @@ const GstBillpreview = ({ navigation, route }) => {
   const [gstSettings, setGstSettings] = useState(null);
   const [shopProfile, setShopProfile] = useState({ ...DEFAULT_SHOP_PROFILE });
   const [logoDataUri, setLogoDataUri] = useState('');
+  const [signatureDataUri, setSignatureDataUri] = useState('');
   const [qrSvg, setQrSvg] = useState('');
   const [loading, setLoading] = useState(Boolean(transactionId && !initialTransaction));
   const [busyAction, setBusyAction] = useState('');
@@ -183,6 +184,7 @@ const GstBillpreview = ({ navigation, route }) => {
     const freshProfile = await loadShopProfile();
     setShopProfile({ ...DEFAULT_SHOP_PROFILE, ...freshProfile });
     setLogoDataUri('');
+    setSignatureDataUri('');
   }, []);
 
   useEffect(() => {
@@ -203,6 +205,7 @@ const GstBillpreview = ({ navigation, route }) => {
     const subscription = DeviceEventEmitter.addListener('shopProfileUpdated', (freshProfile) => {
       setShopProfile({ ...DEFAULT_SHOP_PROFILE, ...(freshProfile || {}) });
       setLogoDataUri('');
+      setSignatureDataUri('');
     });
     return () => subscription.remove();
   }, []);
@@ -219,31 +222,14 @@ const GstBillpreview = ({ navigation, route }) => {
     setEditableInvoiceNumber(transaction?.invoiceNumber || '');
   }, [transaction?.invoiceNumber]);
 
-  // Load logo from DB (base64 first, then backend URL, never local asset)
+  // Load logo/signature from DB (backend URL first, then base64; never a bundled placeholder)
+  // — used for the on-screen preview only. The print/PDF/share action always
+  // re-resolves fresh right before generating the HTML (see runPrintAction)
+  // so it never fires with a stale or still-loading image.
   useEffect(() => {
-    const loadLogo = async () => {
-      const b64 = shopProfile?.logoBase64;
-      const url = shopProfile?.logoUrl;
-
-      if (b64) {
-        setLogoDataUri(b64.startsWith('data:') ? b64 : `data:image/png;base64,${b64}`);
-        return;
-      }
-      if (url) {
-        try {
-          const fullUrl = url.startsWith('http') ? url : `${backend_url}${url}`;
-          const cacheFile = `${FileSystem.cacheDirectory}gst_logo_pdf.png`;
-          const { uri: dl } = await FileSystem.downloadAsync(fullUrl, cacheFile);
-          const base64 = await FileSystem.readAsStringAsync(dl, { encoding: 'base64' });
-          setLogoDataUri(`data:image/png;base64,${base64}`);
-        } catch {
-          setLogoDataUri('');
-        }
-        return;
-      }
-      setLogoDataUri('');
-    };
-    loadLogo();
+    console.log('[Logo] shop profile logoUrl:', shopProfile?.logoUrl || '(none)');
+    getLogoDataUri(shopProfile).then(setLogoDataUri);
+    getSignatureDataUri(shopProfile).then(setSignatureDataUri);
   }, [shopProfile]);
 
   const loadTransaction = useCallback(async () => {
@@ -328,7 +314,14 @@ const GstBillpreview = ({ navigation, route }) => {
         setQrSvg(workingQrSvg);
       }
 
-      const html = buildInvoiceHtml(workingTransaction, invoiceSummary, gstSettings, logoDataUri, profile, workingQrSvg);
+      // Re-resolve fresh (don't trust the background-effect state, which may
+      // still be loading) so the PDF never generates before the logo is ready.
+      const [freshLogoSrc, freshSignatureSrc] = await Promise.all([
+        getLogoDataUri(shopProfile),
+        getSignatureDataUri(shopProfile),
+      ]);
+      console.log('[Logo] resolved for print/PDF:', freshLogoSrc ? `(loaded, ${freshLogoSrc.length} chars)` : '(none — hiding logo area)');
+      const html = buildInvoiceHtml(workingTransaction, invoiceSummary, gstSettings, freshLogoSrc, profile, workingQrSvg, freshSignatureSrc);
       if (type === 'print') {
         await Print.printAsync({ html });
       } else {
@@ -453,11 +446,13 @@ const GstBillpreview = ({ navigation, route }) => {
               <Text style={styles.bannerPhone}>{profile.phone}</Text>
             </View>
             <View style={styles.bannerLogoRow}>
-              <Image
-                source={logoDataUri ? { uri: logoDataUri } : LOGO_ASSET}
-                style={styles.bannerLogo}
-                resizeMode="contain"
-              />
+              {logoDataUri ? (
+                <Image
+                  source={{ uri: logoDataUri }}
+                  style={styles.bannerLogo}
+                  resizeMode="contain"
+                />
+              ) : null}
               <Text style={styles.bannerName}>{profile.name}</Text>
             </View>
             <Text style={styles.bannerTagline}>{profile.tagline}</Text>
@@ -600,6 +595,13 @@ const GstBillpreview = ({ navigation, route }) => {
               <Text style={styles.sigLabel}>Customer Signature</Text>
             </View>
             <View style={styles.sigRight}>
+              {signatureDataUri ? (
+                <Image
+                  source={{ uri: signatureDataUri }}
+                  style={styles.sigImage}
+                  resizeMode="contain"
+                />
+              ) : null}
               <Text style={styles.sigCompany}>for {profile.name}</Text>
               <Text style={styles.sigLabel}>Authorised Signatory</Text>
             </View>
@@ -663,7 +665,7 @@ const BankRow = ({ label, value }) => (
 );
 
 // ── HTML builder for PDF / Print ─────────────────────────────────────────────
-const buildInvoiceHtml = (transaction, summary, settings, logoSrc = '', profile = COMPANY, qrSvgStr = '') => {
+const buildInvoiceHtml = (transaction, summary, settings, logoSrc = '', profile = COMPANY, qrSvgStr = '', signatureSrc = '') => {
   const cgstPct    = settings?.cgstPercent    || '1.50';
   const sgstPct    = settings?.sgstPercent    || '1.50';
   const hsnCode    = settings?.hsnCode        || '71141110';
@@ -717,8 +719,8 @@ const buildInvoiceHtml = (transaction, summary, settings, logoSrc = '', profile 
     border-bottom:3px solid #8FA4B5;
   }
   .banner-top  { display:flex; justify-content:space-between; font-size:12px; font-weight:600; color:#A8BDC9; margin-bottom:6px; letter-spacing:.2px; }
-  .banner-mid  { display:flex; justify-content:center; align-items:center; gap:12px; margin-bottom:5px; }
-  .banner-logo { width:125px; height:auto; display:block; }
+  .banner-mid  { position:relative; display:flex; justify-content:center; align-items:center; min-height:60px; margin-bottom:5px; }
+  .banner-logo { position:absolute; left:0; top:50%; transform:translateY(-50%); max-width:120px; max-height:60px; width:auto; height:auto; display:block; }
   .banner-name { font-size:34px; font-weight:900; letter-spacing:2px; color:#FFFFFF; text-transform:uppercase; }
   .banner-tag  { text-align:center; font-size:12px; color:#8FA4B5; letter-spacing:.3px; }
 
@@ -807,6 +809,7 @@ const buildInvoiceHtml = (transaction, summary, settings, logoSrc = '', profile 
   .sig-box  { display:flex; flex-direction:column; justify-content:flex-end; align-items:center; padding:10px 8px; }
   .sig-box.left { border-right:1px solid #C8D4DC; }
   .sig-box.right { align-items:center; justify-content:flex-end; padding-right:0; padding-bottom:10px; }
+  .sig-img  { max-width:140px; max-height:60px; width:auto; height:auto; display:block; margin-bottom:4px; }
   .sig-co   { font-size:11px; color:#6B8496; margin-bottom:5px; text-align:center; }
   .sig-lbl  { font-size:13px; font-weight:800; color:#1C2B3A; letter-spacing:.3px; text-align:center; }
 
@@ -922,6 +925,7 @@ const buildInvoiceHtml = (transaction, summary, settings, logoSrc = '', profile 
       <span class="sig-lbl">Customer Signature</span>
     </div>
     <div class="sig-box right">
+      ${signatureSrc ? `<img src="${signatureSrc}" alt="Signature" class="sig-img"/>` : ''}
       <span class="sig-co">for ${escapeHtml(profile.name)}</span>
       <span class="sig-lbl">Authorised Signatory</span>
     </div>
@@ -1024,7 +1028,7 @@ const styles = StyleSheet.create({
     gap: 34,
     marginBottom: 5,
   },
-  bannerLogo: { width: 118, height: 56 },
+  bannerLogo: { width: 120, height: 60 },
   bannerName: {
     color: C.white,
     fontSize: 24,
@@ -1324,6 +1328,7 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
     gap: 3,
   },
+  sigImage: { width: 140, height: 60, marginBottom: 4 },
   sigCompany: { fontSize: 10, color: C.textLight, marginBottom: 2, textAlign: 'center' },
   sigLabel: { fontSize: 12, fontWeight: '800', color: C.dark, letterSpacing: 0.3, textAlign: 'center' },
 

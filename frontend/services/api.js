@@ -644,15 +644,6 @@ export const saveShopProfileToDb = async (profile) => {
   }
 };
 
-export const uploadShopLogo = async (base64Data, mimeType) => {
-  try {
-    return await postJSON(`${base_url}/shop-profile/logo`, { base64Data, mimeType });
-  } catch (error) {
-    console.error('uploadShopLogo Error:', error);
-    return { success: false, message: 'Network error' };
-  }
-};
-
 export const uploadShopSignature = async (base64Data, mimeType) => {
   console.log('[Signature] uploadShopSignature request: mimeType=', mimeType, 'base64 length=', base64Data?.length);
   try {

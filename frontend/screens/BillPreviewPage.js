@@ -1,4 +1,4 @@
-import React, { useContext } from 'react';
+import React, { useContext, useEffect, useState } from 'react';
 import {
   Image, StyleSheet, Text, View, ScrollView,
   TouchableOpacity, Alert, Linking, Platform,
@@ -9,9 +9,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Sharing from 'expo-sharing';
 import { generatePDF } from '../utils/pdfGenerator';
 import { AuthContext } from '../context/AuthContext';
+import { loadShopProfile, DEFAULT_SHOP_PROFILE } from '../services/shopProfile';
+import { getLogoDataUri, getSignatureDataUri } from '../utils/shopBranding';
 import { horizontalPadding, moderateScale, spacing } from '../utils/responsive';
-
-const LOGO_ASSET = require('../assets/logo.png');
 
 // ── Premium Silver Theme (mirrors GstBillpreview) ─────────────────────────────
 const C = {
@@ -88,6 +88,21 @@ const BillPreviewPage = ({ navigation, route }) => {
   const { gstBillEnabled, isAdmin, currentUser } = useContext(AuthContext);
   const { billData, customer } = route.params || {};
 
+  const [shopProfile, setShopProfile] = useState({ ...DEFAULT_SHOP_PROFILE });
+  const [logoDataUri, setLogoDataUri] = useState('');
+  const [signatureDataUri, setSignatureDataUri] = useState('');
+
+  useEffect(() => {
+    loadShopProfile().then((profile) => {
+      setShopProfile({ ...DEFAULT_SHOP_PROFILE, ...profile });
+    });
+  }, []);
+
+  useEffect(() => {
+    getLogoDataUri(shopProfile).then(setLogoDataUri);
+    getSignatureDataUri(shopProfile).then(setSignatureDataUri);
+  }, [shopProfile]);
+
   if (gstBillEnabled && !isAdmin) {
     return (
       <SafeAreaView style={styles.container}>
@@ -152,7 +167,20 @@ const BillPreviewPage = ({ navigation, route }) => {
 
   const handleWhatsAppShare = async () => {
     try {
-      const uri = await generatePDF({ billData, customer }, 'bill');
+      // Re-resolve fresh (don't trust the background-effect state, which may
+      // still be loading) so the PDF never generates before the logo is ready.
+      const [freshLogoSrc, freshSignatureSrc] = await Promise.all([
+        getLogoDataUri(shopProfile),
+        getSignatureDataUri(shopProfile),
+      ]);
+      console.log('[Logo] resolved for WhatsApp PDF:', freshLogoSrc ? `(loaded, ${freshLogoSrc.length} chars)` : '(none — hiding logo area)');
+      const uri = await generatePDF({
+        billData,
+        customer,
+        profile: { shopName: shopProfile.shopName, tagline: shopProfile.tagline },
+        logoSrc: freshLogoSrc,
+        signatureSrc: freshSignatureSrc,
+      }, 'bill');
       let phone = (customer?.phone || '').replace(/[^0-9]/g, '');
       if (!phone) { Alert.alert('Error', 'Phone number missing.'); return; }
       if (phone.length === 10) phone = '91' + phone;
@@ -191,10 +219,12 @@ const BillPreviewPage = ({ navigation, route }) => {
           {/* 2. Dark Banner */}
           <View style={styles.banner}>
             <View style={styles.bannerLogoRow}>
-              <Image source={LOGO_ASSET} style={styles.bannerLogo} resizeMode="contain" />
-              <Text style={styles.bannerName}>MAYIL SILVER</Text>
+              {logoDataUri ? (
+                <Image source={{ uri: logoDataUri }} style={styles.bannerLogo} resizeMode="contain" />
+              ) : null}
+              <Text style={styles.bannerName}>{shopProfile.shopName || 'MAYIL SILVER'}</Text>
             </View>
-            <Text style={styles.bannerTagline}>Pure Silver · Trusted Quality</Text>
+            <Text style={styles.bannerTagline}>{shopProfile.tagline || 'Pure Silver · Trusted Quality'}</Text>
           </View>
 
           {/* 3. Customer + Bill Details Row */}
@@ -354,6 +384,19 @@ const BillPreviewPage = ({ navigation, route }) => {
             </Text>
           </View>
 
+          {/* Signature Section */}
+          <View style={styles.sigSection}>
+            <View style={styles.sigBox}>
+              <Text style={styles.sigLabel}>Customer Signature</Text>
+            </View>
+            <View style={styles.sigBox}>
+              {signatureDataUri ? (
+                <Image source={{ uri: signatureDataUri }} style={styles.sigImage} resizeMode="contain" />
+              ) : null}
+              <Text style={styles.sigLabel}>Authorized Signature</Text>
+            </View>
+          </View>
+
           {/* 9. Bottom Bar */}
           <View style={styles.bottomBar}>
             <View style={styles.bottomItem}>
@@ -427,7 +470,7 @@ const styles = StyleSheet.create({
   bannerLeft:    { fontSize:12, fontWeight:'600', color: C.silverLight, letterSpacing:0.2 },
   bannerRight:   { fontSize:12, fontWeight:'600', color: C.silverLight, letterSpacing:0.2 },
   bannerLogoRow: { flexDirection:'row', alignItems:'center', justifyContent:'center', gap:10, marginBottom:2 },
-  bannerLogo:    { width:42, height:42, borderRadius:4 },
+  bannerLogo:    { width:42, height:42 },
   bannerName:    { fontSize:24, fontWeight:'900', color:C.dark, letterSpacing:1.2, textAlign:'center' },
   bannerTagline: { textAlign:'center', fontSize:11, color:C.textLight, letterSpacing:0.2 },
 
@@ -497,6 +540,20 @@ const styles = StyleSheet.create({
   },
   totalBarLabel: { fontSize:14, fontWeight:'800', color: C.silverLight, letterSpacing:0.5 },
   totalBarValue: { fontSize:20, fontWeight:'900', letterSpacing:0.5 },
+
+  // Signature Section
+  sigSection: {
+    flexDirection:'row', minHeight:100,
+    borderBottomWidth:1, borderBottomColor: C.border,
+  },
+  sigBox: {
+    flex:1, justifyContent:'flex-end', alignItems:'center', padding:12,
+  },
+  sigImage: { width:140, height:60, marginBottom:4 },
+  sigLabel: {
+    fontSize: moderateScale(11.5), fontWeight:'800', color:C.text,
+    borderTopWidth:1, borderTopColor:C.dark, paddingTop:5, width:150, textAlign:'center',
+  },
 
   // Bottom Bar
   bottomBar: { flexDirection:'row', backgroundColor: C.darkMid, paddingHorizontal:14, paddingVertical:8 },

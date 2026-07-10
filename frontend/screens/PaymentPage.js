@@ -18,6 +18,7 @@ import {
   buildSummary,
   getStoredInvoiceSequence,
   getLogoDataUri,
+  getSignatureDataUri,
   loadPaymentItemHistory,
   PAYMENT_EDITABLE_INVOICE_KEY,
   reserveNextInvoiceNumber,
@@ -542,8 +543,11 @@ const PaymentPage = ({ navigation, route }) => {
         termsAndConditions: profile.termsAndConditions || '',
       };
 
-      const logoSrc = await getLogoDataUri(profile);
-      const html = buildPaymentBillHtml(transaction, summary, gstSettings, logoSrc, shopProfileForHtml);
+      const [logoSrc, signatureSrc] = await Promise.all([
+        getLogoDataUri(profile),
+        getSignatureDataUri(profile),
+      ]);
+      const html = buildPaymentBillHtml(transaction, summary, gstSettings, logoSrc, shopProfileForHtml, signatureSrc);
 
       await reserveNextInvoiceNumber(PAYMENT_EDITABLE_INVOICE_KEY, payment.invoiceNumber);
       await savePaymentItemName(form.itemName);

@@ -132,8 +132,8 @@ const INVOICE_CSS = `
     border-bottom:3px solid #8FA4B5;
   }
   .banner-top  { display:flex; justify-content:space-between; font-size:12px; font-weight:600; color:#A8BDC9; margin-bottom:6px; letter-spacing:.2px; }
-  .banner-mid  { display:flex; justify-content:center; align-items:center; gap:12px; margin-bottom:5px; }
-  .banner-logo { width:125px; height:auto; display:block; }
+  .banner-mid  { position:relative; display:flex; justify-content:center; align-items:center; min-height:60px; margin-bottom:5px; }
+  .banner-logo { position:absolute; left:0; top:50%; transform:translateY(-50%); max-width:120px; max-height:60px; width:auto; height:auto; display:block; }
   .banner-name { font-size:34px; font-weight:900; letter-spacing:2px; color:#FFFFFF; text-transform:uppercase; }
   .banner-tag  { text-align:center; font-size:12px; color:#8FA4B5; letter-spacing:.3px; }
 
@@ -212,6 +212,7 @@ const INVOICE_CSS = `
   .sig-box  { display:flex; flex-direction:column; justify-content:flex-end; align-items:center; padding:10px 8px; }
   .sig-box.left { border-right:1px solid #C8D4DC; }
   .sig-box.right { align-items:center; justify-content:flex-end; padding-right:0; padding-bottom:10px; }
+  .sig-img  { max-width:140px; max-height:60px; width:auto; height:auto; display:block; margin-bottom:4px; }
   .sig-co   { font-size:11px; color:#6B8496; margin-bottom:5px; text-align:center; }
   .sig-lbl  { font-size:13px; font-weight:800; color:#1C2B3A; letter-spacing:.3px; text-align:center; }
 
@@ -227,7 +228,7 @@ const INVOICE_CSS = `
   .bb-val { font-weight:800; color:#FFFFFF; font-size:11.5px; margin-left:2px; }
 `;
 
-const buildInvoiceBody = (transaction, summary, settings, logoSrc, profile) => {
+const buildInvoiceBody = (transaction, summary, settings, logoSrc, profile, signatureSrc = '') => {
   const cgstPct = settings?.cgstPercent || '1.50';
   const sgstPct = settings?.sgstPercent || '1.50';
   const hsnCode = settings?.hsnCode || '71141110';
@@ -351,6 +352,7 @@ const buildInvoiceBody = (transaction, summary, settings, logoSrc, profile) => {
       <span class="sig-lbl">Customer Signature</span>
     </div>
     <div class="sig-box right">
+      ${signatureSrc ? `<img src="${signatureSrc}" alt="Signature" class="sig-img"/>` : ''}
       <span class="sig-co">for ${escHtml(profile.name)}</span>
       <span class="sig-lbl">Authorised Signatory</span>
     </div>
@@ -367,8 +369,8 @@ const buildInvoiceBody = (transaction, summary, settings, logoSrc, profile) => {
 
 export const buildCombinedInvoiceHtml = (bills) => {
   const bodies = bills
-    .map(({ transaction, summary, settings, logoSrc, profile }) =>
-      `<div class="page-wrap">${buildInvoiceBody(transaction, summary, settings, logoSrc, profile)}</div>`
+    .map(({ transaction, summary, settings, logoSrc, profile, signatureSrc }) =>
+      `<div class="page-wrap">${buildInvoiceBody(transaction, summary, settings, logoSrc, profile, signatureSrc)}</div>`
     )
     .join('\n');
 

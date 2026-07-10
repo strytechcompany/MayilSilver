@@ -9,8 +9,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import DashboardCard from '../components/DashboardCard';
 import ActionCard from '../components/ActionCard';
 import { fetchRecentTransactions, fetchAllCustomers } from '../services/api';
-import { loadShopProfile } from '../services/shopProfile';
-import { base_url } from '../config';
+import { LOGO_ASSET } from '../utils/shopBranding';
 import { AppContext } from '../context/AppContext';
 import { AuthContext } from '../context/AuthContext';
 import { contentWidth, horizontalPadding, moderateScale, spacing } from '../utils/responsive';
@@ -18,8 +17,6 @@ import { getDueBalanceDisplay } from '../utils/balanceDisplay';
 
 const { width, height } = Dimensions.get('window');
 const RUPEE = '\u20B9';
-
-const BACKEND_URL = base_url.replace(/\/api\/?$/, '');
 
 const HomeScreen = ({ navigation }) => {
   const { ftRate, updateFtRate, goldRate, updateGoldRate, refreshRates } = useContext(AppContext);
@@ -63,22 +60,7 @@ const HomeScreen = ({ navigation }) => {
   const [customerCount, setCustomerCount] = useState(0);
   const [loadingTxns, setLoadingTxns] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [shopLogo, setShopLogo] = useState(null);
 
-  useEffect(() => {
-    loadShopProfile().then((profile) => {
-      if (profile?.logoBase64) {
-        const b64 = profile.logoBase64;
-        setShopLogo({ uri: b64.startsWith('data:') ? b64 : `data:image/png;base64,${b64}` });
-      } else if (profile?.logoUrl) {
-        const fullUrl = profile.logoUrl.startsWith('http')
-          ? profile.logoUrl
-          : `${BACKEND_URL}${profile.logoUrl}`;
-        setShopLogo({ uri: fullUrl });
-      }
-    });
-  }, []);
-  
   // FT Rate Edit Modal State
   const [isFtModalVisible, setIsFtModalVisible] = useState(false);
   const [tempFtRate, setTempFtRate] = useState('');
@@ -170,7 +152,7 @@ const HomeScreen = ({ navigation }) => {
         <View style={styles.header}>
           <View style={styles.headerBrand}>
             <Image
-              source={shopLogo || require('../assets/logo.png')}
+              source={LOGO_ASSET}
               style={styles.headerLogo}
               resizeMode="contain"
             />

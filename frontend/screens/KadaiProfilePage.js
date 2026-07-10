@@ -18,7 +18,8 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import Header from '../components/Header';
 import { loadShopProfile, saveShopProfile, DEFAULT_SHOP_PROFILE } from '../services/shopProfile';
-import { uploadShopLogo, uploadShopSignature } from '../services/api';
+import { uploadShopSignature } from '../services/api';
+import { LOGO_ASSET } from '../utils/shopBranding';
 import { horizontalPadding, moderateScale, spacing } from '../utils/responsive';
 
 // ── Theme (matches GstBillpreview premium silver) ─────────────
@@ -59,17 +60,11 @@ const HeaderPreview = ({ form }) => (
           </Text>
         </View>
         <View style={preview.bannerCenter}>
-          {form.logoBase64 ? (
-            <Image
-              source={{ uri: form.logoBase64 }}
-              style={preview.logo}
-              resizeMode="contain"
-            />
-          ) : (
-            <View style={preview.logoPlaceholder}>
-              <MaterialCommunityIcons name="image-outline" size={18} color={C.silver} />
-            </View>
-          )}
+          <Image
+            source={LOGO_ASSET}
+            style={preview.logo}
+            resizeMode="contain"
+          />
           <Text style={preview.shopName} numberOfLines={1}>
             {form.shopName || 'SHOP NAME'}
           </Text>
@@ -107,35 +102,6 @@ const KadaiProfilePage = ({ navigation }) => {
   const set = useCallback((key, value) => {
     setForm((prev) => ({ ...prev, [key]: value }));
   }, []);
-
-  const pickLogo = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission Required', 'Please allow photo library access to upload a logo.');
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.45,
-      base64: true,
-    });
-    if (!result.canceled && result.assets?.[0]?.base64) {
-      const { base64, mimeType } = result.assets[0];
-      const mime = mimeType || 'image/jpeg';
-      set('logoBase64', `data:${mime};base64,${base64}`);
-      // Upload to backend to get a hosted URL
-      try {
-        const uploadResult = await uploadShopLogo(base64, mime);
-        if (uploadResult?.success && uploadResult.logoUrl) {
-          set('logoUrl', uploadResult.logoUrl);
-        }
-      } catch {}
-    }
-  };
-
-  const removeLogo = () => set('logoBase64', '');
 
   const pickSignature = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -177,7 +143,7 @@ const KadaiProfilePage = ({ navigation }) => {
     }
   };
 
-  const removeSignature = () => set('signatureBase64', '');
+  const removeSignature = () => setForm((prev) => ({ ...prev, signatureBase64: '', signatureUrl: '' }));
 
   const handleSave = async () => {
     if (!form.shopName.trim()) {
@@ -240,38 +206,8 @@ const KadaiProfilePage = ({ navigation }) => {
           <HeaderPreview form={form} />
 
           {/* ── Section: Shop Branding ── */}
+          {/* Company Logo is a fixed brand asset (assets/logo.png) — no upload control here */}
           <SectionCard title="Shop Branding" icon="store-outline">
-            {/* Logo Upload */}
-            <Text style={styles.fieldLabel}>Shop Logo</Text>
-            <View style={styles.logoRow}>
-              {form.logoBase64 ? (
-                <Image
-                  source={{ uri: form.logoBase64 }}
-                  style={styles.logoPreview}
-                  resizeMode="contain"
-                />
-              ) : (
-                <View style={styles.logoEmpty}>
-                  <MaterialCommunityIcons name="image-plus" size={28} color={C.silver} />
-                  <Text style={styles.logoEmptyText}>No logo</Text>
-                </View>
-              )}
-              <View style={styles.logoBtns}>
-                <TouchableOpacity style={styles.uploadBtn} onPress={pickLogo} activeOpacity={0.8}>
-                  <MaterialCommunityIcons name="upload" size={14} color={C.white} />
-                  <Text style={styles.uploadBtnText}>
-                    {form.logoBase64 ? 'Change Logo' : 'Upload Logo'}
-                  </Text>
-                </TouchableOpacity>
-                {form.logoBase64 ? (
-                  <TouchableOpacity style={styles.removeBtn} onPress={removeLogo} activeOpacity={0.8}>
-                    <MaterialCommunityIcons name="delete-outline" size={14} color="#DC2626" />
-                    <Text style={styles.removeBtnText}>Remove</Text>
-                  </TouchableOpacity>
-                ) : null}
-              </View>
-            </View>
-
             <Field label="Shop Name *" value={form.shopName} onChangeText={(v) => set('shopName', v)} placeholder="e.g. SHRI MAYIL SILVER" autoCapitalize="characters" />
             <Field label="Tagline / Subtitle" value={form.tagline} onChangeText={(v) => set('tagline', v)} placeholder="e.g. Silver Wholesale & Retail Showroom" />
           </SectionCard>

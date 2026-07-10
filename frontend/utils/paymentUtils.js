@@ -1,10 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Asset } from 'expo-asset';
-import * as FileSystem from 'expo-file-system/legacy';
-import { base_url } from '../config';
+import { getLogoDataUri, getSignatureDataUri } from './shopBranding';
 
-const LOGO_ASSET = require('../assets/logo.png');
-const BACKEND_URL = (base_url || '').replace(/\/api\/?$/, '');
+export { getLogoDataUri, getSignatureDataUri };
 
 export const PAYMENT_HISTORY_KEY  = 'paymentHistory';
 export const PAYMENT_COUNTER_KEY  = 'paymentInvoiceCounter';
@@ -150,35 +147,6 @@ export const reserveNextInvoiceNumber = async (storageKey, currentInvoiceNumber)
   return String(nextValue);
 };
 
-// ── Logo helper ────────────────────────────────────────────────────────────
-export const getLogoDataUri = async (profile) => {
-  // 1. Backend URL — always set when logo is uploaded via POST /api/shop-profile/logo
-  if (profile?.logoUrl) {
-    try {
-      const fullUrl = profile.logoUrl.startsWith('http')
-        ? profile.logoUrl
-        : `${BACKEND_URL}${profile.logoUrl}`;
-      const cached = `${FileSystem.cacheDirectory}payment_logo_pdf.png`;
-      const { uri: dl } = await FileSystem.downloadAsync(fullUrl, cached);
-      const b64 = await FileSystem.readAsStringAsync(dl, { encoding: FileSystem.EncodingType.Base64 });
-      if (b64) return `data:image/png;base64,${b64}`;
-    } catch {}
-  }
-  // 2. Base64 stored directly in MongoDB
-  if (profile?.logoBase64) {
-    const b = profile.logoBase64;
-    if (b) return b.startsWith('data:') ? b : `data:image/png;base64,${b}`;
-  }
-  // 3. Fallback: local bundled asset
-  try {
-    const [asset] = await Asset.loadAsync(LOGO_ASSET);
-    const b64 = await FileSystem.readAsStringAsync(asset.localUri ?? asset.uri, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
-    return `data:image/png;base64,${b64}`;
-  } catch { return ''; }
-};
-
 // ── Bill summary builder ───────────────────────────────────────────────────
 // Reverse GST calculation: `cash` is the FINAL GST-inclusive amount, so the
 // taxable value and tax components are derived backwards from it.
@@ -249,7 +217,7 @@ export const buildPaymentBillHtml = (tx, summary, settings, logoSrc = '', profil
   .banner     { background:#1C2B3A; color:#fff; padding:10px 14px 8px; border-bottom:3px solid #8FA4B5; }
   .banner-top { display:flex; justify-content:space-between; font-size:12px; font-weight:600; color:#A8BDC9; margin-bottom:6px; }
   .banner-mid { position:relative; display:flex; justify-content:center; align-items:center; min-height:120px; margin-bottom:5px; }
-  .banner-logo      { position:absolute; left:0; top:50%; transform:translateY(-50%); width:138px; height:auto; display:block; }
+  .banner-logo      { position:absolute; left:0; top:50%; transform:translateY(-50%); max-width:120px; max-height:60px; width:auto; height:auto; display:block; }
   .banner-name{ font-size:34px; font-weight:900; letter-spacing:2px; color:#FFF; text-transform:uppercase; }
   .banner-tag { text-align:center; font-size:12px; color:#8FA4B5; }
   .addr-strip { text-align:center; padding:7px 14px; background:#F5F7F9; border-bottom:1px solid #C8D4DC; font-size:13px; color:#445C6E; line-height:1.5; }
@@ -287,7 +255,7 @@ export const buildPaymentBillHtml = (tx, summary, settings, logoSrc = '', profil
   .co-stamp { margin-top:14px; text-align:right; font-size:11.5px; font-weight:700; color:#1C2B3A; line-height:1.75; }
   .sig-grid { display:grid; grid-template-columns:1fr 1fr; min-height:120px; border-bottom:1px solid #C8D4DC; }
   .sig-box  { display:flex; flex-direction:column; justify-content:flex-end; align-items:center; padding:10px 8px; }
-  .sig-img  { max-width:130px; max-height:55px; height:auto; display:block; margin-bottom:4px; }
+  .sig-img  { max-width:140px; max-height:60px; width:auto; height:auto; display:block; margin-bottom:4px; }
   .sig-lbl  { font-size:13px; font-weight:800; color:#1C2B3A; }
   .sig-co   { font-size:11px; color:#6B8496; margin-bottom:5px; }
   .bottom-bar { display:grid; grid-template-columns:1fr 1fr 1fr; padding:8px 14px; background:#243447; }
