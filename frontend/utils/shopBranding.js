@@ -11,19 +11,63 @@ export const LOGO_ASSET = require('../assets/logo.png');
 
 let _logoDataUriPromise = null; // resolved once per app session, then cached
 
+// Reads a resolved local file URI into a base64 data: URI. Isolated so both
+// the primary and fallback resolution paths below share identical, logged
+// read behavior.
+const readLocalUriAsDataUri = async (fileUri, sourceLabel) => {
+  const base64 = await FileSystem.readAsStringAsync(fileUri, { encoding: FileSystem.EncodingType.Base64 });
+  if (!base64) throw new Error(`Read ${sourceLabel} but got empty base64 content`);
+  console.log(`[Logo] base64 conversion OK via ${sourceLabel} (${base64.length} chars)`);
+  return `data:image/png;base64,${base64}`;
+};
+
 const loadStaticLogoDataUri = async () => {
-  console.log('[Logo] loading fixed asset from assets/logo.png');
+  const startedAt = Date.now();
+  console.log('[Logo] module require() path: ../assets/logo.png');
+  console.log('[Logo] resolving bundled asset (Asset.fromModule)…');
+
+  const asset = Asset.fromModule(LOGO_ASSET);
+  console.log('[Logo] Asset.fromModule metadata:', {
+    name: asset.name,
+    type: asset.type,
+    uri: asset.uri,
+    alreadyDownloaded: asset.downloaded,
+  });
+
+  // Primary path: explicitly download/resolve the asset to a local file URI
+  // (required in production/APK builds — the require()'d module reference
+  // alone is not guaranteed to be a readable filesystem path there, even
+  // though it usually is in Expo Go / dev). Never use asset.uri directly in
+  // an <img src="..."> — it can be a packager URL (dev) or an opaque
+  // asset:/// resource URI (production) that a PDF-rendering WebView can't
+  // load; only a base64 data: URI is reliable in both environments.
   try {
-    const [asset] = await Asset.loadAsync(LOGO_ASSET);
-    const fileUri = asset.localUri || asset.uri;
-    console.log('[Logo] resolved asset uri:', fileUri);
-    if (!fileUri) throw new Error('Asset.loadAsync returned no localUri/uri');
-    const base64 = await FileSystem.readAsStringAsync(fileUri, { encoding: FileSystem.EncodingType.Base64 });
-    if (!base64) throw new Error('Read logo file but got empty base64 content');
-    console.log(`[Logo] loaded OK (${base64.length} base64 chars)`);
-    return `data:image/png;base64,${base64}`;
-  } catch (error) {
-    console.error('[Logo] FAILED to load assets/logo.png:', error?.message || error);
+    await asset.downloadAsync();
+    console.log('[Logo] asset.downloadAsync() resolved. localUri:', asset.localUri);
+    if (!asset.localUri) throw new Error('downloadAsync() completed but asset.localUri is still empty');
+    const dataUri = await readLocalUriAsDataUri(asset.localUri, 'asset.localUri');
+    console.log(`[Logo] fully loaded in ${Date.now() - startedAt}ms — safe to generate PDF now`);
+    return dataUri;
+  } catch (primaryError) {
+    console.error('[Logo] primary resolution (asset.localUri) failed:', primaryError?.message || primaryError);
+  }
+
+  // Fallback: some production Android builds hand back an asset:/// resource
+  // URI that FileSystem can't read directly even after downloadAsync(), but
+  // CAN be copied into a real cache file via FileSystem.downloadAsync (which
+  // understands that scheme even though readAsStringAsync doesn't).
+  try {
+    const rawUri = asset.uri;
+    console.log('[Logo] fallback: copying asset.uri into cache via FileSystem.downloadAsync:', rawUri);
+    if (!rawUri) throw new Error('asset.uri is empty — nothing to fall back to');
+    const cacheFile = `${FileSystem.cacheDirectory}company_logo_cache.png`;
+    const { uri: copiedUri } = await FileSystem.downloadAsync(rawUri, cacheFile);
+    const dataUri = await readLocalUriAsDataUri(copiedUri, 'fallback cache copy');
+    console.log(`[Logo] fully loaded via fallback in ${Date.now() - startedAt}ms — safe to generate PDF now`);
+    return dataUri;
+  } catch (fallbackError) {
+    console.error('[Logo] fallback resolution also failed:', fallbackError?.message || fallbackError);
+    console.error('[Logo] giving up — logo area will be hidden for this session. Verify assets/logo.png exists and expo-asset is a declared dependency.');
     return '';
   }
 };

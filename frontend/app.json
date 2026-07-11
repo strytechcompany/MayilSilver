@@ -7,6 +7,9 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -33,7 +36,7 @@
       "eas": {
         "projectId": "f45747c6-f055-492e-bcee-d006bf807a7f"
       }
-    },
-    "owner": "mayilsilver"
+    }
+    
   }
 }
