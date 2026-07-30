@@ -495,6 +495,31 @@ export const deletePaymentRecord = async (id) => {
   }
 };
 
+export const bulkDeletePaymentRecords = async (ids) => {
+  try {
+    return await postJSON(`${base_url}/payments/bulk-delete`, { ids });
+  } catch (error) {
+    console.error('bulkDeletePaymentRecords Error:', error);
+    return { success: false, message: 'Network error' };
+  }
+};
+
+// Fetches the next invoice number to pre-fill on the Payment page, derived
+// from MongoDB's payment invoice counter. Returns '' when no invoice has
+// ever been generated, so the admin can type the first one manually.
+export const fetchNextPaymentInvoiceNumber = async () => {
+  try {
+    const data = await getJSON(`${base_url}/payments/next-invoice-number`);
+    return {
+      nextInvoiceNumber: data?.nextInvoiceNumber || '',
+      previousInvoiceNumber: data?.previousInvoiceNumber || '',
+    };
+  } catch (error) {
+    console.error('fetchNextPaymentInvoiceNumber Error:', error);
+    return { nextInvoiceNumber: '', previousInvoiceNumber: '' };
+  }
+};
+
 // ── BILL HISTORY ─────────────────────────────────────────────
 
 // Fetch all bills for a specific customer

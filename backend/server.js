@@ -1302,7 +1302,6 @@ router.post('/payments/save', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Customer name is required' });
     }
     if (normalizedStatus === 'final') {
-      if (!String(phone || '').trim()) return res.status(400).json({ success: false, message: 'Phone is required' });
       if (!trimmedItemName) return res.status(400).json({ success: false, message: 'Item name is required' });
       if (toNumber(cash) <= 0) return res.status(400).json({ success: false, message: 'Cash must be greater than 0' });
       if (toNumber(weight) <= 0) return res.status(400).json({ success: false, message: 'Weight must be greater than 0' });
@@ -1372,6 +1371,26 @@ router.post('/payments/save', async (req, res) => {
       payment = await PaymentTransaction.create(payload);
     }
 
+    // Advance the payment invoice counter to whatever the admin just saved,
+    // so the next page load offers payload.invoiceNumber + 1. This is a plain
+    // $set (not $max): the admin's manually-typed number is always the new
+    // source of truth, even if it's lower than the previous counter value
+    // (e.g. restarting the sequence at 500 after it had reached 107) — the
+    // counter must NEVER be derived from older/unrelated invoice records.
+    // Only plain numeric invoice numbers move the counter; legacy "PAY..."
+    // style numbers are left alone.
+    if (/^\d+$/.test(payload.invoiceNumber)) {
+      try {
+        await Counter.findByIdAndUpdate(
+          'paymentInvoiceSeq',
+          { $set: { seq: parseInt(payload.invoiceNumber, 10) } },
+          { upsert: true }
+        );
+      } catch (counterErr) {
+        console.error('Payment invoice counter update failed:', counterErr?.message || counterErr);
+      }
+    }
+
     const populatedPayment = await PaymentTransaction.findById(payment._id)
       .populate('customerId', 'customerName phone address gstin');
 
@@ -1382,11 +1401,49 @@ router.post('/payments/save', async (req, res) => {
   }
 });
 
+// GET /api/payments/next-invoice-number — the invoice number to pre-fill on
+// the Payment page. Sourced ONLY from the dedicated paymentInvoiceSeq
+// counter — never from the highest invoiceNumber among existing payment
+// records, so old/unrelated invoices (e.g. legacy 1585, 900, 450) never
+// affect the current sequence. Empty string means the counter has never
+// been set — the admin must type the first invoice number manually.
+router.get('/payments/next-invoice-number', async (req, res) => {
+  try {
+    const counter = await Counter.findById('paymentInvoiceSeq');
+    const lastUsed = counter ? toNumber(counter.seq) : 0;
+
+    res.json({
+      success: true,
+      nextInvoiceNumber: lastUsed > 0 ? String(lastUsed + 1) : '',
+      previousInvoiceNumber: lastUsed > 0 ? String(lastUsed) : '',
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 router.delete('/payments/:id', async (req, res) => {
   try {
     const payment = await PaymentTransaction.findByIdAndDelete(req.params.id);
     if (!payment) return res.status(404).json({ success: false, message: 'Payment not found' });
     res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// POST /api/payments/bulk-delete — delete multiple selected payment records
+// at once (Payment History "Delete Selected" action).
+router.post('/payments/bulk-delete', async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body.ids) ? req.body.ids : [];
+    const validIds = ids.filter((id) => mongoose.Types.ObjectId.isValid(id));
+    if (!validIds.length) {
+      return res.status(400).json({ success: false, message: 'No valid payment ids provided' });
+    }
+
+    const result = await PaymentTransaction.deleteMany({ _id: { $in: validIds } });
+    res.json({ success: true, deletedCount: result.deletedCount || 0 });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

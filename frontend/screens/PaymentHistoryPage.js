@@ -9,7 +9,7 @@ import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { WebView } from 'react-native-webview';
 import Header from '../components/Header';
-import { fetchPaymentHistoryFromDb, deletePaymentRecord } from '../services/api';
+import { bulkDeletePaymentRecords, fetchPaymentHistoryFromDb, deletePaymentRecord } from '../services/api';
 import { loadGstSettings } from '../services/gstSettings';
 import { loadShopProfile } from '../services/shopProfile';
 import { buildPaymentBillHtml, buildSummary, fmtDate } from '../utils/paymentUtils';
@@ -433,6 +433,41 @@ const PaymentHistoryPage = ({ navigation }) => {
     ]);
   }, [refresh]);
 
+  const handleBulkDelete = useCallback(() => {
+    const records = getSelectedRecords();
+    if (!records.length) return;
+
+    Alert.alert(
+      'Delete selected payment records?',
+      'This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete', style: 'destructive',
+          onPress: async () => {
+            setActionBusy('bulk-delete');
+            try {
+              const ids = records.map((r) => r._id).filter(Boolean);
+              const res = await bulkDeletePaymentRecords(ids);
+              if (!res?.success) {
+                Alert.alert('Error', res?.message || 'Failed to delete selected payments.');
+                return;
+              }
+              setHistory((prev) => prev.filter((r) => !ids.includes(r._id)));
+              clearSelection();
+              Alert.alert('Deleted', 'Selected payment records were deleted successfully.');
+              refresh();
+            } catch (e) {
+              Alert.alert('Error', e?.message || 'Failed to delete selected payments.');
+            } finally {
+              setActionBusy('');
+            }
+          },
+        },
+      ],
+    );
+  }, [getSelectedRecords, clearSelection, refresh]);
+
   // Bulk action wrappers
   const handleBulkView      = () => handleView(getSelectedRecords(), 'bulk-view');
   const handleBulkPrint     = () => handlePrint(getSelectedRecords(), 'bulk-print');
@@ -712,6 +747,22 @@ const PaymentHistoryPage = ({ navigation }) => {
                 {selCount === filtered.length && filtered.length > 0 ? 'Deselect All' : 'Select All'}
               </Text>
             </TouchableOpacity>
+            {selCount > 0 && (
+              <TouchableOpacity
+                style={styles.deleteSelectedBtn}
+                onPress={handleBulkDelete}
+                disabled={!!actionBusy}
+              >
+                {actionBusy === 'bulk-delete' ? (
+                  <ActivityIndicator size="small" color="#FFF" />
+                ) : (
+                  <>
+                    <MaterialCommunityIcons name="trash-can-outline" size={14} color="#FFF" />
+                    <Text style={styles.deleteSelectedText}>Delete Selected</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
             {filtered.length > 0 && (
               <TouchableOpacity
                 style={styles.printAllBtn}
@@ -979,6 +1030,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#1C2B3A',
   },
   printAllText: { fontSize: moderateScale(10), fontWeight: '700', color: '#FFF' },
+  deleteSelectedBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 8, paddingVertical: 5, borderRadius: 8,
+    backgroundColor: '#EF4444',
+  },
+  deleteSelectedText: { fontSize: moderateScale(10), fontWeight: '700', color: '#FFF' },
 
   dateTrackBanner: {
     flexDirection: 'row', alignItems: 'center', gap: 6,

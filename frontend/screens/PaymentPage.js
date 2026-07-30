@@ -10,18 +10,15 @@ import * as Print from 'expo-print';
 import QRCode from 'qrcode';
 import Header from '../components/Header';
 import { AppContext } from '../context/AppContext';
-import { createCustomer, fetchPaymentHistoryFromDb, fetchPaymentItemSuggestions, searchCustomers, savePaymentRecord } from '../services/api';
+import { createCustomer, fetchNextPaymentInvoiceNumber, fetchPaymentItemSuggestions, searchCustomers, savePaymentRecord } from '../services/api';
 import { loadGstSettings } from '../services/gstSettings';
 import { loadShopProfile } from '../services/shopProfile';
 import {
   buildPaymentBillHtml,
   buildSummary,
-  getStoredInvoiceSequence,
   getLogoDataUri,
   getSignatureDataUri,
   loadPaymentItemHistory,
-  PAYMENT_EDITABLE_INVOICE_KEY,
-  reserveNextInvoiceNumber,
   savePaymentItemName,
 } from '../utils/paymentUtils';
 import { horizontalPadding, moderateScale, spacing } from '../utils/responsive';
@@ -103,12 +100,8 @@ const PaymentPage = ({ navigation, route }) => {
 
   const prepareNextPaymentForm = useCallback(async () => {
     try {
-      const payments = await fetchPaymentHistoryFromDb();
-      const { currentInvoiceNumber, previousInvoiceNumber: lastInvoiceNumber } = await getStoredInvoiceSequence(
-        PAYMENT_EDITABLE_INVOICE_KEY,
-        (payments || []).map((item) => item?.invoiceNumber)
-      );
-      setForm(createEmptyForm(currentInvoiceNumber));
+      const { nextInvoiceNumber, previousInvoiceNumber: lastInvoiceNumber } = await fetchNextPaymentInvoiceNumber();
+      setForm(createEmptyForm(nextInvoiceNumber));
       setPreviousInvoiceNumber(lastInvoiceNumber);
       setSelectedCustomerId('');
       setShowSuggestions(false);
@@ -116,7 +109,7 @@ const PaymentPage = ({ navigation, route }) => {
       setPaymentMeta({ paymentId: '', invoiceNumber: '' });
     } catch (error) {
       console.error('prepareNextPaymentForm:', error);
-      setForm(createEmptyForm('1'));
+      setForm(createEmptyForm(''));
       setPreviousInvoiceNumber('');
       setSelectedCustomerId('');
       setShowSuggestions(false);
@@ -415,7 +408,6 @@ const PaymentPage = ({ navigation, route }) => {
 
   const validateForm = () => {
     if (!form.userName.trim()) { Alert.alert('Required', 'Enter customer name'); return false; }
-    if (!form.phoneNumber.trim()) { Alert.alert('Required', 'Enter phone number'); return false; }
     if (!form.itemName.trim()) { Alert.alert('Required', 'Enter item name'); return false; }
     if (!form.invoiceNumber.trim()) { Alert.alert('Required', 'Enter invoice number'); return false; }
     if (!form.weight || Number.isNaN(Number(form.weight)) || Number(form.weight) <= 0) {
@@ -481,7 +473,7 @@ const PaymentPage = ({ navigation, route }) => {
     setSaving(true);
     try {
       const { payment } = await persistPayment('draft');
-      const nextInvoiceNumber = await reserveNextInvoiceNumber(PAYMENT_EDITABLE_INVOICE_KEY, payment.invoiceNumber);
+      const { nextInvoiceNumber } = await fetchNextPaymentInvoiceNumber();
       await savePaymentItemName(form.itemName);
       await loadCustomers();
       await loadItemSuggestions('');
@@ -549,7 +541,6 @@ const PaymentPage = ({ navigation, route }) => {
       ]);
       const html = buildPaymentBillHtml(transaction, summary, gstSettings, logoSrc, shopProfileForHtml, signatureSrc);
 
-      await reserveNextInvoiceNumber(PAYMENT_EDITABLE_INVOICE_KEY, payment.invoiceNumber);
       await savePaymentItemName(form.itemName);
       await loadCustomers();
       await loadItemSuggestions('');
